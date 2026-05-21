@@ -1,9 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import { requestDeviceCode, pollForToken } from '../proxy/src/auth';
+import { requestDeviceCode, pollOnce } from '../extension/src/auth';
 
 const jsonRes = (body: unknown, ok = true) =>
   ({ ok, status: ok ? 200 : 400, json: async () => body }) as Response;
-const noSleep = async () => {};
 
 describe('requestDeviceCode', () => {
   it('posts client_id + scope and returns the device code', async () => {
@@ -31,33 +30,23 @@ describe('requestDeviceCode', () => {
   });
 });
 
-describe('pollForToken', () => {
-  it('returns the access token after pending responses', async () => {
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(jsonRes({ error: 'authorization_pending' }))
-      .mockResolvedValueOnce(jsonRes({ access_token: 'gho_token' }));
-    const token = await pollForToken('cid', 'dc', 1, fetch as unknown as typeof globalThis.fetch, noSleep);
-    expect(token).toBe('gho_token');
-    expect(fetch).toHaveBeenCalledTimes(2);
+describe('pollOnce', () => {
+  const poll = (body: unknown) =>
+    pollOnce('cid', 'dc', vi.fn(async () => jsonRes(body)) as unknown as typeof globalThis.fetch);
+
+  it('returns the access token when granted', async () => {
+    expect(await poll({ access_token: 'gho_token' })).toEqual({ status: 'ok', token: 'gho_token' });
   });
 
-  it('honors slow_down then succeeds', async () => {
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(jsonRes({ error: 'slow_down' }))
-      .mockResolvedValueOnce(jsonRes({ access_token: 'gho_x' }));
-    await expect(
-      pollForToken('cid', 'dc', 1, fetch as unknown as typeof globalThis.fetch, noSleep),
-    ).resolves.toBe('gho_x');
+  it('reports pending / slow_down without erroring', async () => {
+    expect(await poll({ error: 'authorization_pending' })).toEqual({ status: 'pending' });
+    expect(await poll({ error: 'slow_down' })).toEqual({ status: 'slow_down' });
   });
 
-  it('throws when the user denies authorization', async () => {
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(jsonRes({ error: 'access_denied', error_description: 'denied' }));
-    await expect(
-      pollForToken('cid', 'dc', 1, fetch as unknown as typeof globalThis.fetch, noSleep),
-    ).rejects.toThrow('denied');
+  it('reports an error when the user denies', async () => {
+    expect(await poll({ error: 'access_denied', error_description: 'denied' })).toEqual({
+      status: 'error',
+      message: 'denied',
+    });
   });
 });

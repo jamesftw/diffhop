@@ -1,14 +1,12 @@
 {
   "name": "diffhop",
   "version": "0.1.0",
-  "description": "Chrome extension that redirects GitHub diff URLs to DiffsHub, with a localhost proxy for private repos.",
+  "description": "Chrome extension that redirects GitHub diff URLs to DiffsHub; private repos work via in-browser GitHub sign-in.",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
     "build:watch": "node build.mjs --watch",
-    "start": "node build.mjs && node proxy/dist/server.js",
-    "login": "node build.mjs && node proxy/dist/login.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

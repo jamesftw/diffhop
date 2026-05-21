@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matchGitHubDiffUrl, toDiffsHubUrl } from '../extension/src/urls';
+import { matchGitHubDiffUrl, toDiffsHubUrl, toApiUrl } from '../extension/src/urls';
 
 describe('matchGitHubDiffUrl', () => {
   it('matches a pull request URL', () => {
@@ -80,5 +80,21 @@ describe('toDiffsHubUrl', () => {
 
   it('returns null for non-diff URLs', () => {
     expect(toDiffsHubUrl('https://github.com/facebook/react')).toBeNull();
+  });
+});
+
+describe('toApiUrl', () => {
+  it.each([
+    ['/o/r/pull/123', 'https://api.github.com/repos/o/r/pulls/123'],
+    ['/o/r/pull/123.diff', 'https://api.github.com/repos/o/r/pulls/123'],
+    ['/o/r/commit/abc1234', 'https://api.github.com/repos/o/r/commits/abc1234'],
+    ['/o/r/compare/main...feature', 'https://api.github.com/repos/o/r/compare/main...feature'],
+  ])('maps %s → %s', (path, expected) => {
+    expect(toApiUrl(path)).toBe(expected);
+  });
+
+  it('returns null for non-diff paths', () => {
+    expect(toApiUrl('/o/r')).toBeNull();
+    expect(toApiUrl('/o/r/issues/1')).toBeNull();
   });
 });

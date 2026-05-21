@@ -19,7 +19,6 @@ const copyStaticPlugin = {
 };
 
 await rm('dist', { recursive: true, force: true });
-await rm('proxy/dist', { recursive: true, force: true });
 
 // Extension scripts: bundled as classic IIFE so they load as a classic service
 // worker / content script / popup script.
@@ -28,6 +27,7 @@ const extensionCtx = await esbuild.context({
     background: 'extension/src/background.ts',
     content: 'extension/src/content.ts',
     diffshub: 'extension/src/diffshub.ts',
+    'diffshub-main': 'extension/src/diffshub-main.ts',
     popup: 'extension/src/popup.ts',
   },
   outdir: 'dist',
@@ -39,26 +39,11 @@ const extensionCtx = await esbuild.context({
   plugins: [copyStaticPlugin],
 });
 
-// Proxy: a single Node ESM bundle.
-const proxyCtx = await esbuild.context({
-  entryPoints: {
-    server: 'proxy/src/server.ts',
-    login: 'proxy/src/login.ts',
-  },
-  outdir: 'proxy/dist',
-  bundle: true,
-  format: 'esm',
-  platform: 'node',
-  target: 'node18',
-  banner: { js: '#!/usr/bin/env node' },
-  logLevel: 'info',
-});
-
 if (watch) {
-  await Promise.all([extensionCtx.watch(), proxyCtx.watch()]);
+  await extensionCtx.watch();
   console.log('Watching for changes… (restart to pick up static asset changes)');
 } else {
-  await Promise.all([extensionCtx.rebuild(), proxyCtx.rebuild()]);
-  await Promise.all([extensionCtx.dispose(), proxyCtx.dispose()]);
-  console.log('Build complete → dist/ (extension), proxy/dist/server.js (proxy)');
+  await extensionCtx.rebuild();
+  await extensionCtx.dispose();
+  console.log('Build complete → dist/');
 }

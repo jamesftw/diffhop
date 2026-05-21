@@ -1,83 +1,97 @@
 /**
- * Popup controller: loads/persists extension config to chrome.storage.sync.
- * Logic is exported and DOM/storage are injected so it can run under jsdom in
- * tests; the auto-init at the bottom only runs in the real extension popup.
+ * Popup controller. Enabled toggle (synced) + GitHub sign-in via Device Flow.
+ * Dependencies are injected so the logic can run under jsdom in tests; the
+ * auto-init at the bottom wires the real chrome APIs.
  */
-import { DEFAULT_PORT, type ExtensionConfig } from './rules';
+export const CONFIG_KEY = 'diffshub-config';
+export const TOKEN_KEY = 'diffshub-token';
 
-export const STORAGE_KEY = 'diffshub-config';
+export const DEFAULTS = { enabled: true };
 
-export const DEFAULTS: ExtensionConfig = {
-  enabled: true,
-  port: DEFAULT_PORT,
-  useProxy: false,
-};
-
-export function parsePort(raw: string): number {
-  const n = Number.parseInt(raw, 10);
-  if (!Number.isInteger(n) || n < 1 || n > 65535) return DEFAULT_PORT;
-  return n;
-}
-
-export interface StorageArea {
-  get(key: string): Promise<Record<string, unknown>>;
-  set(items: Record<string, unknown>): Promise<void>;
+export interface PopupDeps {
+  getConfig(): Promise<{ enabled?: boolean }>;
+  setConfig(cfg: { enabled: boolean }): Promise<void>;
+  getToken(): Promise<string>;
+  onTokenChange(cb: (token: string) => void): void;
+  login(): Promise<{ user_code: string; verification_uri: string }>;
+  signout(): Promise<void>;
+  openUrl(url: string): void;
 }
 
 export interface PopupController {
   load(): Promise<void>;
-  save(): Promise<void>;
 }
 
-export function initPopup(doc: Document, storage: StorageArea): PopupController {
+export function initPopup(doc: Document, deps: PopupDeps): PopupController {
   const enabledEl = doc.getElementById('enabled') as HTMLInputElement;
-  const portEl = doc.getElementById('port') as HTMLInputElement;
-  const useProxyEl = doc.getElementById('useProxy') as HTMLInputElement;
-  const statusEl = doc.getElementById('status') as HTMLElement;
-  const form = doc.getElementById('form') as HTMLFormElement;
+  const authBtn = doc.getElementById('authBtn') as HTMLButtonElement;
+  const authStatus = doc.getElementById('authStatus') as HTMLElement;
+  const deviceInfo = doc.getElementById('deviceInfo') as HTMLElement;
 
-  let saving = false;
-
-  async function load(): Promise<void> {
-    const data = await storage.get(STORAGE_KEY);
-    const cfg = { ...DEFAULTS, ...((data[STORAGE_KEY] as Partial<ExtensionConfig>) ?? {}) };
-    enabledEl.checked = cfg.enabled;
-    portEl.value = String(cfg.port);
-    useProxyEl.checked = cfg.useProxy;
-  }
-
-  async function save(): Promise<void> {
-    if (saving) return; // guard against fast/double submits while a write is in flight
-    saving = true;
-    try {
-      const cfg: ExtensionConfig = {
-        enabled: enabledEl.checked,
-        port: parsePort(portEl.value),
-        useProxy: useProxyEl.checked,
-      };
-      portEl.value = String(cfg.port); // reflect the normalized port back to the field
-      await storage.set({ [STORAGE_KEY]: cfg });
-      statusEl.textContent = 'Saved';
-    } finally {
-      saving = false;
+  function renderAuth(token: string): void {
+    if (token) {
+      authStatus.textContent = 'Signed in';
+      authBtn.textContent = 'Sign out';
+      authBtn.dataset.mode = 'out';
+      deviceInfo.textContent = '';
+    } else {
+      authStatus.textContent = 'Not signed in';
+      authBtn.textContent = 'Sign in with GitHub';
+      authBtn.dataset.mode = 'in';
     }
   }
 
-  enabledEl.addEventListener('change', save);
-  portEl.addEventListener('change', save);
-  useProxyEl.addEventListener('change', save);
-  form.addEventListener('submit', (e) => {
-    e.preventDefault(); // Enter key shouldn't reload the popup
-    void save();
+  async function load(): Promise<void> {
+    const cfg = { ...DEFAULTS, ...(await deps.getConfig()) };
+    enabledEl.checked = cfg.enabled;
+    renderAuth(await deps.getToken());
+  }
+
+  enabledEl.addEventListener('change', () => {
+    void deps.setConfig({ enabled: enabledEl.checked });
   });
 
-  return { load, save };
+  authBtn.addEventListener('click', async () => {
+    if (authBtn.dataset.mode === 'out') {
+      await deps.signout();
+      renderAuth('');
+      return;
+    }
+    authBtn.disabled = true;
+    try {
+      const { user_code, verification_uri } = await deps.login();
+      deviceInfo.textContent = `Enter code ${user_code} on the page that opened`;
+      authStatus.textContent = 'Waiting for authorization…';
+      deps.openUrl(verification_uri);
+    } catch (err) {
+      deviceInfo.textContent = `Login failed: ${(err as Error).message}`;
+    } finally {
+      authBtn.disabled = false;
+    }
+  });
+
+  deps.onTokenChange((token) => renderAuth(token));
+
+  return { load };
 }
 
 if (typeof document !== 'undefined' && typeof chrome !== 'undefined' && chrome.storage) {
   const controller = initPopup(document, {
-    get: (key) => chrome.storage.sync.get(key),
-    set: (items) => chrome.storage.sync.set(items),
+    getConfig: async () =>
+      ((await chrome.storage.sync.get(CONFIG_KEY))[CONFIG_KEY] as { enabled?: boolean }) ?? {},
+    setConfig: (cfg) => chrome.storage.sync.set({ [CONFIG_KEY]: cfg }),
+    getToken: async () => ((await chrome.storage.local.get(TOKEN_KEY))[TOKEN_KEY] as string) ?? '',
+    onTokenChange: (cb) =>
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === 'local' && changes[TOKEN_KEY]) cb((changes[TOKEN_KEY].newValue as string) ?? '');
+      }),
+    login: () =>
+      chrome.runtime.sendMessage({ type: 'login' }).then((r) => {
+        if (!r?.ok) throw new Error(r?.error ?? 'login failed');
+        return r;
+      }),
+    signout: () => chrome.runtime.sendMessage({ type: 'signout' }).then(() => undefined),
+    openUrl: (url) => void chrome.tabs.create({ url }),
   });
   void controller.load();
 }

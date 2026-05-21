@@ -2,12 +2,12 @@
   "manifest_version": 3,
   "name": "diffhop",
   "version": "0.1.0",
-  "description": "Redirects GitHub diff URLs to DiffsHub, with private-repo support via a localhost proxy.",
-  "permissions": ["declarativeNetRequest", "storage"],
+  "description": "Redirects GitHub diff URLs to DiffsHub, with private-repo support via your GitHub login.",
+  "permissions": ["declarativeNetRequest", "storage", "alarms"],
   "host_permissions": [
     "https://github.com/*",
     "https://diffshub.com/*",
-    "http://localhost/*"
+    "https://api.github.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -21,7 +21,13 @@
     {
       "matches": ["https://diffshub.com/*"],
       "js": ["diffshub.js"],
-      "run_at": "document_idle"
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://diffshub.com/*"],
+      "js": ["diffshub-main.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
     }
   ],
   "action": {

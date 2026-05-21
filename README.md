@@ -1,32 +1,43 @@
 # diffhop
 
 A Chrome extension (MV3) that redirects GitHub diff URLs to
-[DiffsHub](https://diffshub.com), plus a minimal localhost proxy that adds
-**private-repo support** by authenticating DiffsHub's diff fetches against
-GitHub with your own Personal Access Token (PAT).
+[DiffsHub](https://diffshub.com). Public repos work out of the box; **private
+repos work after a one-click GitHub sign-in** — no proxy, no terminal, no token
+to copy.
 
-- **Public repos:** work with the extension alone — no proxy, no token.
-- **Private repos:** run the localhost proxy with a PAT. The extension redirects
-  DiffsHub's `/api/diff` calls to the proxy, which fetches the diff from GitHub
-  authenticated and hands it back.
+- **Public repos:** just install — every GitHub diff page redirects to DiffsHub.
+- **Private repos:** click **Sign in with GitHub** in the popup once. The
+  extension then fetches private diffs from the GitHub API on your behalf.
 
 ## How it works
 
 1. You navigate to a GitHub diff URL (pull request, commit, or compare). A
    `declarativeNetRequest` main-frame rule rewrites it to the same path on
    `diffshub.com` **at the network layer** — before GitHub is fetched, so there's
-   no GitHub paint and no flash. Because dNR redirects are transparent (they
-   leave no GitHub history entry), pressing Back returns to your previous page.
+   no GitHub paint and no flash. dNR redirects are transparent (no GitHub history
+   entry), so pressing Back returns to your previous page.
 2. GitHub's in-page (SPA / Turbo) navigations make no main-frame request, so a
    **content script** catches those as a fallback and redirects them.
-3. DiffsHub's frontend fetches the raw diff via
-   `GET https://diffshub.com/api/diff?path=…`.
-4. **If a PAT is configured**, another `declarativeNetRequest` rule redirects
-   that fetch to `http://localhost:<port>/api/diff?…`. The proxy fetches
-   `https://github.com{path}.diff` with `Authorization: Bearer <PAT>` and
-   returns the diff with the CORS header DiffsHub's page requires.
-5. **If no PAT is configured**, the `/api/diff` request is left untouched and
-   public diffs resolve natively through DiffsHub.
+3. DiffsHub's frontend fetches the raw diff via `GET /api/diff?path=…`. When
+   you're **signed in**, a content script on diffshub.com intercepts that fetch
+   (it patches `window.fetch`) and asks the extension's background to serve it.
+   The background calls the **GitHub REST API**
+   (`api.github.com/repos/.../pulls/N` with `Accept: application/vnd.github.diff`)
+   using your token, and returns the diff. The token lives in the extension and
+   **never reaches DiffsHub's page**. When you're signed out, the fetch is left
+   alone and public diffs resolve natively through DiffsHub.
+
+There is **no localhost proxy** — everything runs inside the extension.
+
+## Private repos: sign in (one click)
+
+1. Open the **diffhop** popup → **Sign in with GitHub**.
+2. A github.com tab opens asking you to approve a short code — click **Authorize**.
+3. The popup flips to **Signed in**. Private PRs/commits/compares now render.
+
+This uses GitHub's **OAuth Device Flow** with a public Client ID (no secret); the
+token is a normal GitHub user token stored in the extension's `chrome.storage`,
+nowhere else. Sign out anytime from the popup.
 
 ## Getting back to GitHub (escape)
 
@@ -36,69 +47,31 @@ Every GitHub diff page redirects to DiffsHub, so to avoid trapping you:
   tags that link with a `?dh-skip` query; the network-layer rule has a
   higher-priority `allow` exception for it, and the GitHub content script strips
   the marker and sets a sticky **per-tab** flag so you can keep browsing GitHub
-  via in-page navigation without bouncing back. (A query, not a hash, because
-  hashes aren't visible to declarativeNetRequest.)
-- Or just press the browser's **Back** button. Reaching a GitHub diff page via
-  Back/Forward is honored (not bounced) — but a fresh visit to a *new* diff
-  still redirects, so nothing silently "goes dead."
-- DiffsHub can leave duplicate same-URL history entries when you arrive via the
-  redirect, which would otherwise make Back cycle between identical DiffsHub
-  pages. A guard in the DiffsHub content script fast-forwards Back past those
-  duplicates so you reach your real previous page (e.g. the PR list).
-- The popup's **Enabled** toggle remains the global off-switch.
+  without bouncing back. (A query, not a hash, because hashes aren't visible to
+  declarativeNetRequest.)
+- Or press the browser's **Back** button. Reaching a GitHub diff page via
+  Back/Forward is honored (not bounced); a fresh visit to a *new* diff still
+  redirects, so nothing silently "goes dead."
+- DiffsHub can leave duplicate same-URL history entries; a guard in the DiffsHub
+  content script fast-forwards Back past them to your real previous page.
+- The popup's **Enabled** toggle is the global off-switch.
 
-(Why a marker instead of the referrer? DiffsHub's link is `rel="noreferrer"`, so
-no referrer reaches GitHub to detect.)
+(Why a marker instead of the referrer? DiffsHub's link is `rel="noreferrer"`.)
 
-## Build
+## Build & install
 
 ```bash
 npm install
-npm run build        # → dist/ (extension) and proxy/dist/server.js (proxy)
-npm run build:watch  # rebuild extension + proxy on change
+npm run build        # → dist/
+npm run build:watch  # rebuild on change
 ```
 
-## Install the extension (unpacked)
-
-1. `npm run build`
-2. Open `chrome://extensions`, enable **Developer mode** (top-right).
-3. Click **Load unpacked** and select the `dist/` directory.
-4. Pin the extension and open its popup to configure:
-   - **Enabled** — master on/off toggle.
-   - **Proxy port** — must match the proxy's port (default `7547`).
-   - **Use local proxy** — turn on for private repos (after starting the proxy).
-
-
-## Private repos: log in & run the proxy
-
-No manual token generation — authenticate with GitHub's Device Flow:
-
-1. **Log in** (one time):
-   ```bash
-   npm run login
-   ```
-   It prints a code and a link (`github.com/login/device`). Open the link, enter
-   the code, click **Authorize**. The token is saved to `~/.diffhop/token.json`.
-2. **Start the proxy** and leave it running while browsing private diffs:
-   ```bash
-   npm start          # builds, then runs node proxy/dist/server.js (port 7547)
-   ```
-3. In the extension popup, turn on **Use local proxy** (and make sure **Proxy
-   port** matches).
-
-That's it — private PRs/commits/compares now render in DiffsHub.
-
-The login uses a public OAuth App Client ID (no secret); the token is a normal
-GitHub user token stored only on your machine. To re-authenticate, run
-`npm run login` again.
-
-**Manual PAT fallback:** instead of `npm run login`, you can put a token in
-`.env` (`GITHUB_PAT=…`, classic `repo` scope or fine-grained Contents:read). The
-proxy prefers the Device Flow token and falls back to `.env`.
+1. Open `chrome://extensions`, enable **Developer mode** (top-right).
+2. **Load unpacked** → select the `dist/` directory.
+3. Pin diffhop. Public repos work immediately; for private repos, **Sign in with
+   GitHub** in the popup.
 
 ## Supported URL patterns
-
-The extension redirects (and the proxy serves) these GitHub diff routes:
 
 - `/:org/:repo/pull/:number`
 - `/:org/:repo/commit/:sha`
@@ -110,29 +83,21 @@ and hash fragments are all normalized to the canonical diff path.
 ## Develop / test
 
 ```bash
-npm test              # vitest run (unit)
-npm run test:watch
+npm test                # vitest run (unit)
 npm run typecheck
 npm run verify:browser  # builds + drives a real browser end-to-end
 ```
 
-Unit coverage: URL matching (`test/urls.test.ts`), dynamic rule construction
-(`test/rules.test.ts`), the proxy request handler incl. CORS/preflight/error
-passthrough (`test/server.test.ts`), and the popup controller incl.
-double-submit guard and keyboard submit (`test/popup.test.ts`).
+Unit coverage: URL + API-URL mapping (`test/urls.test.ts`), dynamic rule
+construction (`test/rules.test.ts`), the Device Flow auth (`test/auth.test.ts`),
+and the popup controller (`test/popup.test.ts`).
 
 `npm run verify:browser` (`scripts/verify.mjs`) loads the built extension into a
 real browser via Playwright and checks the redirect paths (PR / commit / compare
-/ `.diff`), the non-diff pass-through, SPA navigation, the Enabled toggle, and
-the full escape flow (DiffsHub link tagging → marker escape → sticky per tab).
+/ `.diff`), non-diff pass-through, SPA navigation, the Enabled toggle, the full
+escape flow, Back → PR list, and — if a `~/.diffhop/token.json` is present — the
+proxy-free private-diff path end to end.
 
 > It uses Playwright's **bundled Chromium**, not your installed Chrome: since
-> Chrome 137, branded Chrome ignores the `--load-extension` command-line flag,
-> so command-line automation can't load the extension there. (Loading it
-> manually via `chrome://extensions` → Load unpacked is unaffected.)
-
-## Private-repo proxy testing in production
-
-Beyond mocked unit tests, exercise the proxy against the real service: start it
-with a valid PAT and confirm a private PR renders in DiffsHub, and that a wrong
-PAT surfaces GitHub's 401/404 naturally.
+> Chrome 137, branded Chrome ignores the `--load-extension` command-line flag.
+> (Loading via `chrome://extensions` → Load unpacked is unaffected.)

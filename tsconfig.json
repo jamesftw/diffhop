@@ -11,5 +11,5 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["chrome", "node"]
   },
-  "include": ["extension/src", "proxy/src", "test", "build.mjs"]
+  "include": ["extension/src", "test", "build.mjs"]
 }

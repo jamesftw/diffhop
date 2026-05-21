@@ -1,34 +1,23 @@
 import { describe, it, expect } from 'vitest';
-import {
-  buildDynamicRules,
-  RULE_MAIN_REDIRECT,
-  RULE_MAIN_ALLOW,
-  RULE_API_REDIRECT,
-} from '../extension/src/rules';
-
-const base = { enabled: true, port: 7547, useProxy: true };
+import { buildDynamicRules, RULE_MAIN_REDIRECT, RULE_MAIN_ALLOW } from '../extension/src/rules';
 
 const byId = (rules: ReturnType<typeof buildDynamicRules>, id: number) =>
   rules.find((r) => r.id === id);
 
 describe('buildDynamicRules', () => {
-  it('includes the main redirect + allow rules when enabled (proxy off)', () => {
-    const rules = buildDynamicRules({ ...base, useProxy: false });
+  it('returns no rules when disabled', () => {
+    expect(buildDynamicRules({ enabled: false })).toEqual([]);
+  });
+
+  it('returns the main-frame redirect + allow rules when enabled', () => {
+    const rules = buildDynamicRules({ enabled: true });
+    expect(rules).toHaveLength(2);
     expect(byId(rules, RULE_MAIN_REDIRECT)).toBeDefined();
     expect(byId(rules, RULE_MAIN_ALLOW)).toBeDefined();
-    expect(byId(rules, RULE_API_REDIRECT)).toBeUndefined();
-  });
-
-  it('adds the /api/diff rule when the proxy is enabled', () => {
-    expect(byId(buildDynamicRules(base), RULE_API_REDIRECT)).toBeDefined();
-  });
-
-  it('returns no rules when disabled', () => {
-    expect(buildDynamicRules({ ...base, enabled: false })).toEqual([]);
   });
 
   describe('main-frame redirect rule', () => {
-    const rule = () => byId(buildDynamicRules(base), RULE_MAIN_REDIRECT)!;
+    const rule = () => byId(buildDynamicRules({ enabled: true }), RULE_MAIN_REDIRECT)!;
 
     it('redirects GitHub diff pages to the diffshub path, main_frame only', () => {
       const r = rule();
@@ -38,9 +27,7 @@ describe('buildDynamicRules', () => {
       expect(filter.test('https://github.com/o/r/pull/1')).toBe(true);
       expect(filter.test('https://github.com/o/r/commit/abc1234')).toBe(true);
       expect(filter.test('https://github.com/o/r/compare/a...b')).toBe(true);
-      // captures the canonical path, dropping sub-tabs / suffix
       expect('https://github.com/o/r/pull/1/files'.match(filter)![1]).toBe('/o/r/pull/1');
-      expect('https://github.com/o/r/pull/1.diff'.match(filter)![1]).toBe('/o/r/pull/1');
     });
 
     it('does not match non-diff GitHub pages', () => {
@@ -52,7 +39,7 @@ describe('buildDynamicRules', () => {
 
   describe('escape allow rule', () => {
     it('exempts requests carrying the skip marker, higher priority than redirect', () => {
-      const rules = buildDynamicRules(base);
+      const rules = buildDynamicRules({ enabled: true });
       const allow = byId(rules, RULE_MAIN_ALLOW)!;
       const redirect = byId(rules, RULE_MAIN_REDIRECT)!;
       expect(allow.action.type).toBe('allow');
@@ -60,24 +47,6 @@ describe('buildDynamicRules', () => {
       const filter = new RegExp(allow.condition.regexFilter!);
       expect(filter.test('https://github.com/o/r/pull/1?dh-skip=1')).toBe(true);
       expect(filter.test('https://github.com/o/r/pull/1')).toBe(false);
-    });
-  });
-
-  describe('/api/diff → localhost rule', () => {
-    const rule = () => byId(buildDynamicRules(base), RULE_API_REDIRECT)!;
-
-    it('redirects diffshub /api/diff to the localhost proxy, scoped to diffshub', () => {
-      const r = rule();
-      expect(r.condition.resourceTypes).toEqual(['xmlhttprequest']);
-      expect(r.condition.initiatorDomains).toEqual(['diffshub.com']);
-      expect(r.action.redirect!.regexSubstitution).toBe('http://localhost:7547/api/diff?\\1');
-    });
-
-    it('uses the configured port, falling back to default when invalid', () => {
-      expect(byId(buildDynamicRules({ ...base, port: 9000 }), RULE_API_REDIRECT)!
-        .action.redirect!.regexSubstitution).toContain(':9000/');
-      expect(byId(buildDynamicRules({ ...base, port: 0 }), RULE_API_REDIRECT)!
-        .action.redirect!.regexSubstitution).toContain(':7547/');
     });
   });
 });

@@ -1,14 +1,28 @@
 /**
- * Content script for diffshub.com.
- *
- * Tags DiffsHub's "View on GitHub" links (rel="noreferrer", so otherwise
- * indistinguishable from a typed URL) with the SKIP_PARAM query. The network
- * -layer redirect rule exempts requests carrying it, and the GitHub content
- * script strips it — letting the user escape back to GitHub. DiffsHub renders
- * its links client-side, so we tag on load and again whenever the DOM changes.
+ * Content script for diffshub.com (isolated world). Three jobs:
+ *  1. Bridge the MAIN-world fetch patch (diffshub-main.ts) to the background:
+ *     relay /api/diff requests so the background does the authenticated GitHub
+ *     API call, and post the diff back. The token never enters the page.
+ *  2. Tag DiffsHub's "View on GitHub" links with the SKIP_PARAM escape marker.
+ *  3. Fast-forward Back past DiffsHub's duplicate history entries.
  */
 import { matchGitHubDiffUrl } from './urls';
 import { SKIP_PARAM } from './escape';
+
+const TAG = 'diffhop';
+
+// Bridge: MAIN world → background → MAIN world.
+window.addEventListener('message', (e) => {
+  if (e.source !== window || (e.data as { __tag?: string })?.__tag !== TAG) return;
+  const data = e.data as { __tag: string; dir: string; id: number; url: string };
+  if (data.dir !== 'request') return;
+  chrome.runtime.sendMessage({ type: 'fetchDiff', url: data.url }, (resp) => {
+    window.postMessage(
+      { __tag: TAG, dir: 'response', id: data.id, ...(resp ?? { ok: false }) },
+      '*',
+    );
+  });
+});
 
 function tagLink(a: HTMLAnchorElement): void {
   if (!a.href.startsWith('https://github.com/')) return;
