@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "DiffsHub Redirect",
+  "version": "0.1.0",
+  "description": "Redirects GitHub diff URLs to DiffsHub, with private-repo support via a localhost proxy.",
+  "permissions": ["declarativeNetRequest", "storage"],
+  "host_permissions": [
+    "https://github.com/*",
+    "https://diffshub.com/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://github.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://diffshub.com/*"],
+      "js": ["diffshub.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

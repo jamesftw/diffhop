@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>DiffsHub Redirect</title>
+  </head>
+  <body>
+    <header>
+      <h1>DiffsHub Redirect</h1>
+    </header>
+    <form id="form" novalidate>
+      <label class="row toggle">
+        <span class="label">Enabled</span>
+        <input type="checkbox" id="enabled" />
+      </label>
+
+      <label class="row">
+        <span class="label">Proxy port</span>
+        <input type="number" id="port" min="1" max="65535" inputmode="numeric" />
+      </label>
+
+      <label class="row stacked">
+        <span class="label">GitHub PAT <span class="hint">(private repos)</span></span>
+        <input type="password" id="pat" placeholder="ghp_… — leave blank for public" autocomplete="off" />
+      </label>
+
+      <p class="help">
+        Public repos work with no token. For private repos, run the localhost
+        proxy and paste a PAT with <code>repo</code> read access.
+      </p>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </form>
+    <script src="popup.js"></script>
+  </body>
+</html>

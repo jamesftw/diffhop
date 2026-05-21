@@ -1,0 +1,26 @@
+{
+  "name": "diffshub-redirect",
+  "version": "0.1.0",
+  "description": "Chrome extension that redirects GitHub diff URLs to DiffsHub, with a localhost proxy for private repos.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "build:watch": "node build.mjs --watch",
+    "start": "node build.mjs && node proxy/dist/server.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "verify:browser": "node build.mjs && node scripts/verify.mjs"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.42",
+    "@types/node": "^25.9.1",
+    "esbuild": "^0.28.0",
+    "jsdom": "^25.0.1",
+    "playwright": "^1.60.0",
+    "playwright-core": "^1.60.0",
+    "typescript": "^6.0.3",
+    "vitest": "^3.2.4"
+  }
+}
