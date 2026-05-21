@@ -1,5 +1,5 @@
 {
-  "name": "diffshub-redirect",
+  "name": "diffhop",
   "version": "0.1.0",
   "description": "Chrome extension that redirects GitHub diff URLs to DiffsHub, with a localhost proxy for private repos.",
   "private": true,

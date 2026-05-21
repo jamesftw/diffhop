@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "DiffsHub Redirect",
+  "name": "diffhop",
   "version": "0.1.0",
   "description": "Redirects GitHub diff URLs to DiffsHub, with private-repo support via a localhost proxy.",
   "permissions": ["declarativeNetRequest", "storage"],

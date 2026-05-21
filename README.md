@@ -1,4 +1,4 @@
-# DiffsHub Redirect
+# diffhop
 
 A Chrome extension (MV3) that redirects GitHub diff URLs to
 [DiffsHub](https://diffshub.com), plus a minimal localhost proxy that adds
