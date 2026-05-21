@@ -21,8 +21,9 @@ describe('handleDiffRequest', () => {
 
     expect(fetch).toHaveBeenCalledTimes(1);
     const [url, init] = (fetch as any).mock.calls[0];
-    expect(url).toBe('https://github.com/o/r/pull/1.diff');
+    expect(url).toBe('https://api.github.com/repos/o/r/pulls/1');
     expect(init.headers.Authorization).toBe('Bearer ghp_secret');
+    expect(init.headers.Accept).toBe('application/vnd.github.diff');
 
     expect(res.status).toBe(200);
     expect(res.body).toBe(DIFF_BODY);
@@ -34,14 +35,16 @@ describe('handleDiffRequest', () => {
     expect(res.headers['Access-Control-Allow-Origin']).toBe('https://diffshub.com');
   });
 
-  it('strips an existing .diff/.patch suffix before appending .diff', async () => {
-    const fetch = mockFetch();
-    await handleDiffRequest('GET', '/api/diff?path=/o/r/pull/1.diff', deps(fetch));
-    expect((fetch as any).mock.calls[0][0]).toBe('https://github.com/o/r/pull/1.diff');
-
-    const fetch2 = mockFetch();
-    await handleDiffRequest('GET', '/api/diff?path=/o/r/pull/1.patch', deps(fetch2));
-    expect((fetch2 as any).mock.calls[0][0]).toBe('https://github.com/o/r/pull/1.diff');
+  it('maps pull/commit/compare paths to the REST API, stripping any suffix', async () => {
+    const calls = async (path: string) => {
+      const f = mockFetch();
+      await handleDiffRequest('GET', `/api/diff?path=${path}`, deps(f));
+      return (f as any).mock.calls[0][0];
+    };
+    expect(await calls('/o/r/pull/1.diff')).toBe('https://api.github.com/repos/o/r/pulls/1');
+    expect(await calls('/o/r/pull/1.patch')).toBe('https://api.github.com/repos/o/r/pulls/1');
+    expect(await calls('/o/r/commit/abc1234')).toBe('https://api.github.com/repos/o/r/commits/abc1234');
+    expect(await calls('/o/r/compare/a...b')).toBe('https://api.github.com/repos/o/r/compare/a...b');
   });
 
   it('answers OPTIONS preflight with CORS headers and no upstream fetch', async () => {

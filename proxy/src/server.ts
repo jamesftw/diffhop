@@ -51,20 +51,23 @@ export async function handleDiffRequest(
     return text(400, 'Missing required query parameter: path');
   }
 
-  // DiffsHub passes the page path; GitHub serves the diff at `{path}.diff`.
-  // Strip any existing suffix so we never request `…/1.diff.diff`.
-  const base = path.replace(/\.(diff|patch)$/, '');
-  const githubUrl = `https://github.com${base}.diff`;
+  // GitHub's web `.diff` endpoint ignores PAT auth for private repos, so we use
+  // the REST API with the diff media type instead (works for public + private).
+  const apiUrl = toApiUrl(path);
+  if (!apiUrl) {
+    return text(400, `Unsupported diff path: ${path}`);
+  }
 
   const headers: Record<string, string> = {
-    Accept: 'application/vnd.github.v3.diff, text/plain',
-    'User-Agent': 'diffshub-redirect-proxy',
+    Accept: 'application/vnd.github.diff',
+    'X-GitHub-Api-Version': '2022-11-28',
+    'User-Agent': 'diffhop-proxy',
   };
   if (deps.pat.trim() !== '') {
     headers.Authorization = `Bearer ${deps.pat}`;
   }
 
-  const upstream = await deps.fetch(githubUrl, { headers });
+  const upstream = await deps.fetch(apiUrl, { headers });
   const body = await upstream.text();
 
   return {
@@ -80,6 +83,22 @@ function text(status: number, body: string): HandlerResult {
     headers: { ...CORS_HEADERS, 'Content-Type': 'text/plain; charset=utf-8' },
     body,
   };
+}
+
+/**
+ * Translate a GitHub page path to its REST API URL. Returns null for paths that
+ * aren't a pull/commit/compare diff.
+ *   /o/r/pull/123        → https://api.github.com/repos/o/r/pulls/123
+ *   /o/r/commit/<sha>    → https://api.github.com/repos/o/r/commits/<sha>
+ *   /o/r/compare/a...b   → https://api.github.com/repos/o/r/compare/a...b
+ */
+export function toApiUrl(path: string): string | null {
+  const clean = path.replace(/\.(diff|patch)$/, '');
+  const m = /^\/([^/]+)\/([^/]+)\/(pull|commit|compare)\/(.+)$/.exec(clean);
+  if (!m) return null;
+  const [, owner, repo, type, ref] = m;
+  const apiType = type === 'pull' ? 'pulls' : type === 'commit' ? 'commits' : 'compare';
+  return `https://api.github.com/repos/${owner}/${repo}/${apiType}/${ref}`;
 }
 
 /** Minimal `.env` loader (no runtime dependency). Existing env vars win. */
