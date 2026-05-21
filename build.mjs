@@ -41,8 +41,11 @@ const extensionCtx = await esbuild.context({
 
 // Proxy: a single Node ESM bundle.
 const proxyCtx = await esbuild.context({
-  entryPoints: ['proxy/src/server.ts'],
-  outfile: 'proxy/dist/server.js',
+  entryPoints: {
+    server: 'proxy/src/server.ts',
+    login: 'proxy/src/login.ts',
+  },
+  outdir: 'proxy/dist',
   bundle: true,
   format: 'esm',
   platform: 'node',

@@ -95,10 +95,10 @@ try {
 const sw = await getServiceWorker();
 if (sw) {
   console.log('Service worker:', sw.url());
-  await setConfig(sw, { enabled: false, port: 7547, pat: '' });
+  await setConfig(sw, { enabled: false, port: 7547, useProxy: false });
   await page.waitForTimeout(700);
   await expectNoRedirect('Toggle OFF disables redirect', 'https://github.com/facebook/react/pull/28000');
-  await setConfig(sw, { enabled: true, port: 7547, pat: '' });
+  await setConfig(sw, { enabled: true, port: 7547, useProxy: false });
 } else {
   record('Toggle OFF disables redirect', false, 'could not reach service worker (inconclusive)');
 }

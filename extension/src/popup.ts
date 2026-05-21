@@ -10,7 +10,7 @@ export const STORAGE_KEY = 'diffshub-config';
 export const DEFAULTS: ExtensionConfig = {
   enabled: true,
   port: DEFAULT_PORT,
-  pat: '',
+  useProxy: false,
 };
 
 export function parsePort(raw: string): number {
@@ -32,7 +32,7 @@ export interface PopupController {
 export function initPopup(doc: Document, storage: StorageArea): PopupController {
   const enabledEl = doc.getElementById('enabled') as HTMLInputElement;
   const portEl = doc.getElementById('port') as HTMLInputElement;
-  const patEl = doc.getElementById('pat') as HTMLInputElement;
+  const useProxyEl = doc.getElementById('useProxy') as HTMLInputElement;
   const statusEl = doc.getElementById('status') as HTMLElement;
   const form = doc.getElementById('form') as HTMLFormElement;
 
@@ -43,7 +43,7 @@ export function initPopup(doc: Document, storage: StorageArea): PopupController 
     const cfg = { ...DEFAULTS, ...((data[STORAGE_KEY] as Partial<ExtensionConfig>) ?? {}) };
     enabledEl.checked = cfg.enabled;
     portEl.value = String(cfg.port);
-    patEl.value = cfg.pat;
+    useProxyEl.checked = cfg.useProxy;
   }
 
   async function save(): Promise<void> {
@@ -53,7 +53,7 @@ export function initPopup(doc: Document, storage: StorageArea): PopupController 
       const cfg: ExtensionConfig = {
         enabled: enabledEl.checked,
         port: parsePort(portEl.value),
-        pat: patEl.value.trim(),
+        useProxy: useProxyEl.checked,
       };
       portEl.value = String(cfg.port); // reflect the normalized port back to the field
       await storage.set({ [STORAGE_KEY]: cfg });
@@ -65,7 +65,7 @@ export function initPopup(doc: Document, storage: StorageArea): PopupController 
 
   enabledEl.addEventListener('change', save);
   portEl.addEventListener('change', save);
-  patEl.addEventListener('change', save);
+  useProxyEl.addEventListener('change', save);
   form.addEventListener('submit', (e) => {
     e.preventDefault(); // Enter key shouldn't reload the popup
     void save();

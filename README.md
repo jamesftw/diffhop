@@ -66,38 +66,35 @@ npm run build:watch  # rebuild extension + proxy on change
 4. Pin the extension and open its popup to configure:
    - **Enabled** — master on/off toggle.
    - **Proxy port** — must match the proxy's port (default `7547`).
-   - **GitHub PAT** — leave blank for public repos; set it for private repos.
+   - **Use local proxy** — turn on for private repos (after starting the proxy).
 
 
-## Run the proxy (private repos)
+## Private repos: log in & run the proxy
 
-1. Generate a GitHub PAT (see below).
-2. Copy `.env.example` to `.env` and fill it in:
+No manual token generation — authenticate with GitHub's Device Flow:
+
+1. **Log in** (one time):
    ```bash
-   cp .env.example .env
-   # GITHUB_PAT=ghp_xxx
-   # PORT=7547
+   npm run login
    ```
-3. Start it:
+   It prints a code and a link (`github.com/login/device`). Open the link, enter
+   the code, click **Authorize**. The token is saved to `~/.diffhop/token.json`.
+2. **Start the proxy** and leave it running while browsing private diffs:
    ```bash
-   npm start          # builds, then runs node proxy/dist/server.js
+   npm start          # builds, then runs node proxy/dist/server.js (port 7547)
    ```
-   The proxy listens on `http://localhost:7547` (or `PORT`). Keep this running
-   while browsing private diffs.
-4. In the extension popup, make sure **Proxy port** matches and paste the same
-   PAT.
+3. In the extension popup, turn on **Use local proxy** (and make sure **Proxy
+   port** matches).
 
-### Generating a GitHub PAT (with `repo` access)
+That's it — private PRs/commits/compares now render in DiffsHub.
 
-- **Classic token:** GitHub → Settings → Developer settings → *Personal access
-  tokens* → *Tokens (classic)* → **Generate new token**. Enable the **`repo`**
-  scope (full control of private repositories — read access is what's used).
-- **Fine-grained token:** *Personal access tokens* → *Fine-grained tokens* →
-  **Generate new token**. Grant access to the repositories you need and set
-  **Repository permissions → Contents → Read-only**.
+The login uses a public OAuth App Client ID (no secret); the token is a normal
+GitHub user token stored only on your machine. To re-authenticate, run
+`npm run login` again.
 
-Treat the token like a password — it lives only in your local `.env` and is sent
-only to `github.com`.
+**Manual PAT fallback:** instead of `npm run login`, you can put a token in
+`.env` (`GITHUB_PAT=…`, classic `repo` scope or fine-grained Contents:read). The
+proxy prefers the Device Flow token and falls back to `.env`.
 
 ## Supported URL patterns
 

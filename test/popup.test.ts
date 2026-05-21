@@ -6,7 +6,7 @@ const FORM_HTML = `
   <form id="form">
     <input type="checkbox" id="enabled" />
     <input type="number" id="port" />
-    <input type="password" id="pat" />
+    <input type="checkbox" id="useProxy" />
     <p id="status"></p>
   </form>
 `;
@@ -42,13 +42,13 @@ describe('parsePort', () => {
 
 describe('initPopup', () => {
   it('loads stored config into the form fields', async () => {
-    const storage = fakeStorage({ [STORAGE_KEY]: { enabled: false, port: 9000, pat: 'ghp_x' } });
+    const storage = fakeStorage({ [STORAGE_KEY]: { enabled: false, port: 9000, useProxy: true } });
     const ctrl = initPopup(document, storage);
     await ctrl.load();
 
     expect((document.getElementById('enabled') as HTMLInputElement).checked).toBe(false);
     expect((document.getElementById('port') as HTMLInputElement).value).toBe('9000');
-    expect((document.getElementById('pat') as HTMLInputElement).value).toBe('ghp_x');
+    expect((document.getElementById('useProxy') as HTMLInputElement).checked).toBe(true);
   });
 
   it('falls back to defaults when nothing is stored', async () => {
@@ -59,19 +59,19 @@ describe('initPopup', () => {
     expect((document.getElementById('enabled') as HTMLInputElement).checked).toBe(DEFAULTS.enabled);
   });
 
-  it('persists normalized config on change, trimming the PAT', async () => {
+  it('persists normalized config on change', async () => {
     const storage = fakeStorage();
     initPopup(document, storage);
 
     (document.getElementById('enabled') as HTMLInputElement).checked = true;
     const port = document.getElementById('port') as HTMLInputElement;
     port.value = '8080';
-    (document.getElementById('pat') as HTMLInputElement).value = '  ghp_token  ';
+    (document.getElementById('useProxy') as HTMLInputElement).checked = true;
     port.dispatchEvent(new Event('change'));
     await Promise.resolve();
 
     expect(storage.set).toHaveBeenCalledWith({
-      [STORAGE_KEY]: { enabled: true, port: 8080, pat: 'ghp_token' },
+      [STORAGE_KEY]: { enabled: true, port: 8080, useProxy: true },
     });
   });
 

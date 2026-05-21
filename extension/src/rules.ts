@@ -31,7 +31,8 @@ const DIFF_PATH_REGEX =
 export interface ExtensionConfig {
   enabled: boolean;
   port: number;
-  pat: string;
+  /** Route DiffsHub's /api/diff fetch through the authenticated localhost proxy. */
+  useProxy: boolean;
 }
 
 export function buildDynamicRules(
@@ -64,7 +65,7 @@ export function buildDynamicRules(
     },
   ];
 
-  if (config.pat.trim() !== '') {
+  if (config.useProxy) {
     const port =
       Number.isInteger(config.port) && config.port > 0 && config.port <= 65535
         ? config.port

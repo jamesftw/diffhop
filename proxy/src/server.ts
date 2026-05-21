@@ -2,12 +2,14 @@
  * Minimal localhost proxy for DiffsHub private-repo support.
  *
  * The extension redirects DiffsHub's client-side `GET /api/diff?path=…` fetch
- * here. We forward it to `https://github.com{path}.diff` with the configured
- * PAT and return the raw unified diff verbatim, with the CORS header DiffsHub's
- * page origin requires.
+ * here. We resolve it against the GitHub REST API with the diff media type
+ * (`Accept: application/vnd.github.diff`) and the user's token, then return the
+ * unified diff verbatim with the CORS header DiffsHub's page origin requires.
+ * The token comes from `npm run login` (Device Flow) or a fallback PAT.
  */
 import { createServer, type Server } from 'node:http';
 import { readFileSync } from 'node:fs';
+import { loadToken } from './auth';
 
 const ALLOWED_ORIGIN = 'https://diffshub.com';
 
@@ -126,12 +128,13 @@ export function loadEnv(path = '.env'): void {
 export function startServer(): Server {
   loadEnv();
   const port = Number(process.env.PORT) || 7547;
-  const pat = process.env.GITHUB_PAT ?? '';
+  // Prefer the Device Flow token (`npm run login`); fall back to a manual PAT.
+  const pat = loadToken() ?? process.env.GITHUB_PAT ?? '';
 
   if (pat.trim() === '') {
     console.warn(
-      '[diffshub-proxy] No GITHUB_PAT set — private repos will return 404. ' +
-        'Copy .env.example to .env and add a token.',
+      '[diffhop-proxy] Not authenticated — private repos will return 404. ' +
+        'Run `npm run login` (or set GITHUB_PAT in .env).',
     );
   }
 
@@ -144,14 +147,14 @@ export function startServer(): Server {
       res.writeHead(result.status, result.headers);
       res.end(result.body);
     } catch (err) {
-      console.error('[diffshub-proxy] request failed:', err);
+      console.error('[diffhop-proxy] request failed:', err);
       res.writeHead(502, { ...CORS_HEADERS, 'Content-Type': 'text/plain; charset=utf-8' });
       res.end('Bad Gateway: failed to reach github.com');
     }
   });
 
   server.listen(port, () => {
-    console.log(`[diffshub-proxy] listening on http://localhost:${port}`);
+    console.log(`[diffhop-proxy] listening on http://localhost:${port}`);
   });
   return server;
 }

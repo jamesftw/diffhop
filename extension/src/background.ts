@@ -10,7 +10,7 @@ import { buildDynamicRules, RULE_IDS, DEFAULT_PORT, type ExtensionConfig } from 
 
 const STORAGE_KEY = 'diffshub-config';
 
-const DEFAULTS: ExtensionConfig = { enabled: true, port: DEFAULT_PORT, pat: '' };
+const DEFAULTS: ExtensionConfig = { enabled: true, port: DEFAULT_PORT, useProxy: false };
 
 async function getConfig(): Promise<ExtensionConfig> {
   const data = await chrome.storage.sync.get(STORAGE_KEY);

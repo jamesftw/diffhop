@@ -6,20 +6,20 @@ import {
   RULE_API_REDIRECT,
 } from '../extension/src/rules';
 
-const base = { enabled: true, port: 7547, pat: 'ghp_token' };
+const base = { enabled: true, port: 7547, useProxy: true };
 
 const byId = (rules: ReturnType<typeof buildDynamicRules>, id: number) =>
   rules.find((r) => r.id === id);
 
 describe('buildDynamicRules', () => {
-  it('includes the main redirect + allow rules when enabled (no PAT)', () => {
-    const rules = buildDynamicRules({ ...base, pat: '' });
+  it('includes the main redirect + allow rules when enabled (proxy off)', () => {
+    const rules = buildDynamicRules({ ...base, useProxy: false });
     expect(byId(rules, RULE_MAIN_REDIRECT)).toBeDefined();
     expect(byId(rules, RULE_MAIN_ALLOW)).toBeDefined();
     expect(byId(rules, RULE_API_REDIRECT)).toBeUndefined();
   });
 
-  it('adds the /api/diff rule when a PAT is present', () => {
+  it('adds the /api/diff rule when the proxy is enabled', () => {
     expect(byId(buildDynamicRules(base), RULE_API_REDIRECT)).toBeDefined();
   });
 

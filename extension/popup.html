@@ -21,14 +21,14 @@
         <input type="number" id="port" min="1" max="65535" inputmode="numeric" />
       </label>
 
-      <label class="row stacked">
-        <span class="label">GitHub PAT <span class="hint">(private repos)</span></span>
-        <input type="password" id="pat" placeholder="ghp_… — leave blank for public" autocomplete="off" />
+      <label class="row">
+        <span class="label">Use local proxy <span class="hint">(private repos)</span></span>
+        <input type="checkbox" id="useProxy" />
       </label>
 
       <p class="help">
-        Public repos work with no token. For private repos, run the localhost
-        proxy and paste a PAT with <code>repo</code> read access.
+        Public repos work with no setup. For private repos, run
+        <code>npm run login</code> then <code>npm start</code>, and turn this on.
       </p>
       <p id="status" class="status" role="status" aria-live="polite"></p>
     </form>
