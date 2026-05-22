@@ -30,6 +30,7 @@ function makeDeps(
       user_code: 'ABCD-1234',
       verification_uri: 'https://github.com/login/device',
     })),
+    pollNow: vi.fn(async () => {}),
     signout: vi.fn(async () => {}),
     openUrl: vi.fn(),
   }
@@ -81,7 +82,7 @@ describe('initPopup', () => {
     expect(el('manageRepos').hidden).toBe(false)
   })
 
-  it('re-shows the waiting state and code when a sign-in is pending', async () => {
+  it('re-shows the waiting state, code, and polls immediately when pending', async () => {
     const { deps } = makeDeps({ token: '' })
     deps.getPending = vi.fn(async () => ({
       user_code: 'WXYZ-0000',
@@ -90,6 +91,7 @@ describe('initPopup', () => {
     await initPopup(document, deps).load()
     expect(el('authStatus').textContent).toBe('Waiting for authorization…')
     expect(el('authMsg').textContent).toContain('WXYZ-0000')
+    expect(deps.pollNow).toHaveBeenCalled() // poll on open, don't wait for the alarm
   })
 
   it('persists the enabled toggle', async () => {

@@ -32,10 +32,10 @@ export const STORAGE_KEYS = {
 } as const
 
 /**
- * Device Flow token poll. A fast in-worker timer (every POLL_INTERVAL_SECONDS,
- * GitHub's device-flow floor) picks up authorization within seconds; the
- * chrome.alarms backstop re-polls if the worker is terminated mid-flow (alarms
- * are clamped to a ~30s minimum, too slow to rely on alone).
+ * Device Flow token poll cadence. The popup polls this often while open (and
+ * once immediately on open), so authorization shows within seconds; 5s is
+ * GitHub's device-flow floor. The chrome.alarms backstop covers the popup being
+ * closed (alarms are clamped to ~30s, too slow to be the primary path).
  */
 export const POLL_INTERVAL_SECONDS = 5
 export const POLL_ALARM = 'diffshub-poll'

@@ -3,7 +3,7 @@
  * GitHub App Device Flow. Dependencies are injected so the logic runs under
  * jsdom in tests; the auto-init at the bottom wires the real chrome APIs.
  */
-import { DEFAULT_CONFIG, APP_INSTALL_URL } from './lib/config'
+import { DEFAULT_CONFIG, APP_INSTALL_URL, POLL_INTERVAL_SECONDS } from './lib/config'
 import {
   getConfig,
   setConfig,
@@ -14,6 +14,7 @@ import {
 } from './lib/storage'
 import {
   type LoginMessage,
+  type PollNowMessage,
   type SignoutMessage,
   type LoginResponse,
 } from './lib/messages'
@@ -35,6 +36,8 @@ export interface PopupDeps {
   /** Whether a diff fetch 404'd (App not installed on a repo just viewed). */
   needsAccess(): Promise<boolean>
   login(): Promise<PendingLogin>
+  /** Ask the background to poll the token endpoint once, right now. */
+  pollNow(): Promise<void>
   signout(): Promise<void>
   openUrl(url: string): void
 }
@@ -50,8 +53,25 @@ export function initPopup(doc: Document, deps: PopupDeps): PopupController {
   const authMsg = doc.getElementById('authMsg') as HTMLElement
   const manageRepos = doc.getElementById('manageRepos') as HTMLElement
 
+  // While a sign-in is pending and the popup is open, poll the token endpoint
+  // fast (the worker can't be relied on to poll quickly on its own). Stops the
+  // moment the token arrives.
+  let pendingPoll: ReturnType<typeof setInterval> | undefined
+  function startPendingPoll(): void {
+    if (pendingPoll !== undefined) return
+    void deps.pollNow()
+    pendingPoll = setInterval(() => void deps.pollNow(), POLL_INTERVAL_SECONDS * 1000)
+  }
+  function stopPendingPoll(): void {
+    if (pendingPoll !== undefined) {
+      clearInterval(pendingPoll)
+      pendingPoll = undefined
+    }
+  }
+
   function renderAuth(token: string): void {
     if (token) {
+      stopPendingPoll()
       authStatus.textContent = 'Signed in'
       authBtn.textContent = 'Sign out'
       authBtn.dataset.mode = 'out'
@@ -81,6 +101,7 @@ export function initPopup(doc: Document, deps: PopupDeps): PopupController {
       if (pending) {
         authStatus.textContent = 'Waiting for authorization…'
         authMsg.textContent = `Enter code ${pending.user_code} at github.com/login/device`
+        startPendingPoll()
       }
     }
   }
@@ -100,6 +121,7 @@ export function initPopup(doc: Document, deps: PopupDeps): PopupController {
       const { user_code, verification_uri } = await deps.login()
       authStatus.textContent = 'Waiting for authorization…'
       authMsg.textContent = `Approve code ${user_code}, then grant the repos you want.`
+      startPendingPoll()
       deps.openUrl(verification_uri)
     } catch (err) {
       authMsg.textContent = `Sign-in failed: ${(err as Error).message}`
@@ -135,6 +157,10 @@ if (typeof document !== 'undefined' && typeof chrome !== 'undefined' && chrome.s
           if (!r.ok) throw new Error(r.error)
           return { user_code: r.user_code, verification_uri: r.verification_uri }
         }),
+    pollNow: () =>
+      chrome.runtime
+        .sendMessage({ type: 'pollNow' } satisfies PollNowMessage)
+        .then(() => undefined),
     signout: () =>
       chrome.runtime
         .sendMessage({ type: 'signout' } satisfies SignoutMessage)

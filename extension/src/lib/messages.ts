@@ -17,12 +17,20 @@ export interface FetchDiffMessage {
 export interface LoginMessage {
   type: 'login'
 }
+/** Poll the token endpoint once now (the popup drives this while it's open). */
+export interface PollNowMessage {
+  type: 'pollNow'
+}
 /** Clear the stored token and stop polling. */
 export interface SignoutMessage {
   type: 'signout'
 }
 
-export type RuntimeMessage = FetchDiffMessage | LoginMessage | SignoutMessage
+export type RuntimeMessage =
+  | FetchDiffMessage
+  | LoginMessage
+  | PollNowMessage
+  | SignoutMessage
 
 /** Response to {@link FetchDiffMessage}. `ok: false` means "page should fall
  * back to DiffsHub's own backend" (disabled, signed out, or unmappable URL). */
@@ -72,5 +80,7 @@ export function isBridgeMessage(data: unknown): data is BridgeMessage {
 export function isRuntimeMessage(msg: unknown): msg is RuntimeMessage {
   if (typeof msg !== 'object' || msg === null) return false
   const type = (msg as { type?: unknown }).type
-  return type === 'fetchDiff' || type === 'login' || type === 'signout'
+  return (
+    type === 'fetchDiff' || type === 'login' || type === 'pollNow' || type === 'signout'
+  )
 }
