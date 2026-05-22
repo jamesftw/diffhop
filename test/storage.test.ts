@@ -9,6 +9,8 @@ import {
   getDevice,
   setDevice,
   clearDevice,
+  getNeedsAccess,
+  setNeedsAccess,
   type DeviceState,
 } from '../extension/src/lib/storage'
 
@@ -74,5 +76,18 @@ describe('device storage', () => {
     expect(await getDevice()).toEqual(device)
     await clearDevice()
     expect(await getDevice()).toBeNull()
+  })
+})
+
+describe('needs-access flag', () => {
+  it('defaults to false', async () => {
+    expect(await getNeedsAccess()).toBe(false)
+  })
+
+  it('round-trips set and clear', async () => {
+    await setNeedsAccess(true)
+    expect(await getNeedsAccess()).toBe(true)
+    await setNeedsAccess(false)
+    expect(await getNeedsAccess()).toBe(false)
   })
 })

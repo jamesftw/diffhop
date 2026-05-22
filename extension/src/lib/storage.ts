@@ -65,6 +65,18 @@ export async function clearDevice(): Promise<void> {
   await chrome.storage.local.remove(STORAGE_KEYS.device)
 }
 
+/** Set when a diff fetch 404s — the App lacks access to that repo, so the popup
+ * nudges the user to grant repositories. */
+export async function getNeedsAccess(): Promise<boolean> {
+  const data = await chrome.storage.local.get(STORAGE_KEYS.needsAccess)
+  return data[STORAGE_KEYS.needsAccess] === true
+}
+
+export async function setNeedsAccess(needsAccess: boolean): Promise<void> {
+  if (needsAccess) await chrome.storage.local.set({ [STORAGE_KEYS.needsAccess]: true })
+  else await chrome.storage.local.remove(STORAGE_KEYS.needsAccess)
+}
+
 /** Subscribe to config changes (sync area). */
 export function onConfigChanged(cb: () => void): void {
   chrome.storage.onChanged.addListener((changes, area) => {

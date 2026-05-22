@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { initPopup, type PopupDeps } from '../extension/src/popup'
+import { APP_INSTALL_URL } from '../extension/src/lib/config'
 
 const FORM_HTML = `
   <form id="form">
@@ -8,10 +9,13 @@ const FORM_HTML = `
     <span id="authStatus"></span>
     <button type="button" id="authBtn"></button>
     <p id="authMsg"></p>
+    <button type="button" id="manageRepos" hidden></button>
   </form>
 `
 
-function makeDeps(opts: { config?: { enabled?: boolean }; token?: string } = {}) {
+function makeDeps(
+  opts: { config?: { enabled?: boolean }; token?: string; needsAccess?: boolean } = {},
+) {
   let tokenListener: (t: string) => void = () => {}
   const deps: PopupDeps = {
     getConfig: vi.fn(async () => opts.config ?? { enabled: true }),
@@ -21,6 +25,7 @@ function makeDeps(opts: { config?: { enabled?: boolean }; token?: string } = {})
       tokenListener = cb
     }),
     getPending: vi.fn(async () => null),
+    needsAccess: vi.fn(async () => opts.needsAccess ?? false),
     login: vi.fn(async () => ({
       user_code: 'ABCD-1234',
       verification_uri: 'https://github.com/login/device',
@@ -48,11 +53,32 @@ describe('initPopup', () => {
     expect(el('authBtn').textContent).toBe('Sign in with GitHub')
   })
 
-  it('shows signed-in state when a token is present', async () => {
+  it('shows signed-in state and reveals the repos link when a token is present', async () => {
     const { deps } = makeDeps({ token: 'ghu_x' })
     await initPopup(document, deps).load()
     expect(el('authStatus').textContent).toBe('Signed in')
     expect(el('authBtn').textContent).toBe('Sign out')
+    expect(el('manageRepos').hidden).toBe(false)
+  })
+
+  it('keeps the repos link hidden when signed out', async () => {
+    const { deps } = makeDeps({ token: '' })
+    await initPopup(document, deps).load()
+    expect(el('manageRepos').hidden).toBe(true)
+  })
+
+  it('opens the install page from the repos link', async () => {
+    const { deps } = makeDeps({ token: 'ghu_x' })
+    await initPopup(document, deps).load()
+    el('manageRepos').dispatchEvent(new Event('click'))
+    expect(deps.openUrl).toHaveBeenCalledWith(APP_INSTALL_URL)
+  })
+
+  it('nudges to grant repos when a diff recently 404d', async () => {
+    const { deps } = makeDeps({ token: 'ghu_x', needsAccess: true })
+    await initPopup(document, deps).load()
+    expect(el('authMsg').textContent).toContain("can't see")
+    expect(el('manageRepos').hidden).toBe(false)
   })
 
   it('re-shows the waiting state and code when a sign-in is pending', async () => {

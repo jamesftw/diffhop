@@ -23,11 +23,33 @@ import {
   getDevice,
   setDevice,
   clearDevice,
+  setNeedsAccess,
   onConfigChanged,
 } from './lib/storage'
 import { fetchDiff } from './lib/diff-service'
 import { buildDeviceState, decidePollOutcome } from './lib/login-service'
-import { isRuntimeMessage, type LoginResponse, type AckResponse } from './lib/messages'
+import {
+  isRuntimeMessage,
+  type DiffResponse,
+  type LoginResponse,
+  type AckResponse,
+} from './lib/messages'
+
+/**
+ * Reflect the diff outcome on the toolbar icon + a stored flag the popup reads.
+ * A 404 with a valid token means the App isn't installed on that repo, so we
+ * nudge the user to grant repositories; a success clears the nudge.
+ */
+function signalAccess(result: DiffResponse): void {
+  if (result.status === 404) {
+    void setNeedsAccess(true)
+    void chrome.action.setBadgeText({ text: '!' })
+    void chrome.action.setBadgeBackgroundColor({ color: '#bf8700' })
+  } else if (result.status && result.status >= 200 && result.status < 300) {
+    void setNeedsAccess(false)
+    void chrome.action.setBadgeText({ text: '' })
+  }
+}
 
 async function syncRules(): Promise<void> {
   await chrome.declarativeNetRequest.updateDynamicRules({
@@ -83,7 +105,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     // `fetch` must keep its global `this`; passed bare and called as
     // `deps.fetch(...)` it throws "Illegal invocation", so bind it here.
     fetchDiff(msg.url, { isEnabled, getToken, fetch: fetch.bind(globalThis) }).then(
-      sendResponse,
+      (result) => {
+        signalAccess(result)
+        sendResponse(result)
+      },
       () => sendResponse({ ok: false }),
     )
     return true // async response
@@ -98,7 +123,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true
   }
   if (msg.type === 'signout') {
-    Promise.all([clearToken(), stopPolling()]).then(
+    void chrome.action.setBadgeText({ text: '' })
+    Promise.all([clearToken(), stopPolling(), setNeedsAccess(false)]).then(
       () => sendResponse({ ok: true } satisfies AckResponse),
       () => sendResponse({ ok: false } satisfies AckResponse),
     )

@@ -33,11 +33,22 @@ export const ENDPOINTS = {
   diffsHub: 'https://diffshub.com',
 } as const
 
-/** Persisted storage keys (sync = config, local = token + transient device). */
+/**
+ * The diffhop GitHub App's installation page. Sign-in authorizes the App, but
+ * it can only read repos it's *installed* on, so the popup links here to let the
+ * user grant repositories.
+ *
+ * ▶ CONFIRM the slug matches the App's public page (github.com/apps/<slug>).
+ */
+export const APP_INSTALL_URL = 'https://github.com/apps/diffhop/installations/new'
+
+/** Persisted storage keys (sync = config, local = token + transient flags). */
 export const STORAGE_KEYS = {
   config: 'diffshub-config',
   token: 'diffshub-token',
   device: 'diffshub-device',
+  /** Set when a diff fetch 404s (App not installed on that repo). */
+  needsAccess: 'diffshub-needs-access',
 } as const
 
 /** chrome.alarms name for the Device Flow token poll. */
