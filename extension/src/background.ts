@@ -1,7 +1,7 @@
 /**
  * Service worker: keeps the dNR redirect rules in sync with config, serves
  * DiffsHub's authenticated `/api/diff`, and drives the Device Flow sign-in on a
- * chrome.alarms cadence. Testable logic lives in `lib/`; this is the wiring.
+ * chrome.alarms cadence. Testable logic lives in `lib/`.
  */
 import { buildDynamicRules, RULE_IDS } from './rules'
 import { requestDeviceCode, pollOnce } from './auth'

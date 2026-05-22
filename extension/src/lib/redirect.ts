@@ -1,7 +1,7 @@
 /**
  * Pure redirect policy for the github.com content script, extracted so the
  * escape / back-forward rules can be unit tested without a DOM. The content
- * script supplies the observable facts; this function decides whether to bounce
+ * script supplies the observable facts. This function decides whether to bounce
  * the tab to DiffsHub and to where.
  */
 import { matchGitHubDiffUrl } from '../urls'
