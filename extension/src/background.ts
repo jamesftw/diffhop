@@ -8,6 +8,7 @@ import { requestDeviceCode, pollOnce } from './auth'
 import {
   GITHUB_CLIENT_ID,
   POLL_ALARM,
+  POLL_INTERVAL_SECONDS,
   POLL_PERIOD_MINUTES,
   POLL_DELAY_MINUTES,
 } from './lib/config'
@@ -57,25 +58,11 @@ onConfigChanged(() => void syncRules())
 
 // --- Device Flow sign-in ---------------------------------------------------
 
-async function startLogin(): Promise<{ user_code: string; verification_uri: string }> {
-  const device = await requestDeviceCode(GITHUB_CLIENT_ID)
-  const state = buildDeviceState(device, Date.now())
-  await setDevice(state)
-  // Poll on an alarm so it survives the service worker being shut down.
-  await chrome.alarms.create(POLL_ALARM, {
-    periodInMinutes: POLL_PERIOD_MINUTES,
-    delayInMinutes: POLL_DELAY_MINUTES,
-  })
-  return { user_code: state.user_code, verification_uri: state.verification_uri }
-}
+let pollTimer: ReturnType<typeof setInterval> | undefined
 
-async function stopPolling(): Promise<void> {
-  await chrome.alarms.clear(POLL_ALARM)
-  await clearDevice()
-}
-
-chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name !== POLL_ALARM) return
+/** Poll the token endpoint once and act on the result. Shared by the fast
+ * in-worker timer and the alarm backstop. */
+async function pollTick(): Promise<void> {
   const device = await getDevice()
   if (!device) return void stopPolling()
   const result = await pollOnce(GITHUB_CLIENT_ID, device.device_code)
@@ -86,7 +73,45 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   } else if (outcome.action === 'stop') {
     await stopPolling()
   }
-  // 'wait' (pending / slow_down): keep waiting for the next alarm.
+  // 'wait' (pending / slow_down): keep polling.
+}
+
+/** Poll every few seconds while authorization is pending. Each poll's fetch
+ * also keeps the worker awake, so the token is picked up within seconds. */
+function startFastPoll(): void {
+  if (pollTimer !== undefined) return
+  pollTimer = setInterval(() => void pollTick(), POLL_INTERVAL_SECONDS * 1000)
+}
+
+async function startLogin(): Promise<{ user_code: string; verification_uri: string }> {
+  const device = await requestDeviceCode(GITHUB_CLIENT_ID)
+  const state = buildDeviceState(device, Date.now())
+  await setDevice(state)
+  // Backstop in case the worker is terminated before the token arrives.
+  await chrome.alarms.create(POLL_ALARM, {
+    periodInMinutes: POLL_PERIOD_MINUTES,
+    delayInMinutes: POLL_DELAY_MINUTES,
+  })
+  startFastPoll()
+  return { user_code: state.user_code, verification_uri: state.verification_uri }
+}
+
+async function stopPolling(): Promise<void> {
+  if (pollTimer !== undefined) {
+    clearInterval(pollTimer)
+    pollTimer = undefined
+  }
+  await chrome.alarms.clear(POLL_ALARM)
+  await clearDevice()
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== POLL_ALARM) return
+  // If the worker was terminated mid-flow, restart the fast loop and poll now;
+  // if it's already running, the alarm is a no-op.
+  const wasRunning = pollTimer !== undefined
+  startFastPoll()
+  if (!wasRunning) void pollTick()
 })
 
 // --- Message router --------------------------------------------------------

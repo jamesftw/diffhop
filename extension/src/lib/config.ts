@@ -31,7 +31,13 @@ export const STORAGE_KEYS = {
   needsAccess: 'diffshub-needs-access',
 } as const
 
-/** chrome.alarms name + cadence for the Device Flow token poll. */
+/**
+ * Device Flow token poll. A fast in-worker timer (every POLL_INTERVAL_SECONDS,
+ * GitHub's device-flow floor) picks up authorization within seconds; the
+ * chrome.alarms backstop re-polls if the worker is terminated mid-flow (alarms
+ * are clamped to a ~30s minimum, too slow to rely on alone).
+ */
+export const POLL_INTERVAL_SECONDS = 5
 export const POLL_ALARM = 'diffshub-poll'
 export const POLL_PERIOD_MINUTES = 0.5
 export const POLL_DELAY_MINUTES = 0.1
