@@ -34,11 +34,9 @@ export const ENDPOINTS = {
 } as const
 
 /**
- * The diffhop GitHub App's installation page. Sign-in authorizes the App, but
- * it can only read repos it's *installed* on, so the popup links here to let the
- * user grant repositories.
- *
- * ▶ CONFIRM the slug matches the App's public page (github.com/apps/<slug>).
+ * The diffhop GitHub App's installation page (github.com/apps/diffhop). Sign-in
+ * authorizes the App, but it can only read repos it's *installed* on, so the
+ * popup links here to let the user grant repositories.
  */
 export const APP_INSTALL_URL = 'https://github.com/apps/diffhop/installations/new'
 
