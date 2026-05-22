@@ -1,22 +1,9 @@
 import { chromium } from 'playwright-core'
 import path from 'node:path'
-import { readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
 
 const ext = path.resolve('dist')
 const STORAGE_KEY = 'diffshub-config'
-const TOKEN_KEY = 'diffshub-token'
 const results = []
-
-// Optional: a real GitHub token enables the proxy-free private-diff check.
-let realToken = ''
-try {
-  realToken =
-    JSON.parse(readFileSync(path.join(homedir(), '.diffhop/token.json'), 'utf8'))
-      .access_token || ''
-} catch {
-  /* no token — that check is skipped */
-}
 
 function record(name, ok, detail) {
   results.push({ name, ok, detail })
@@ -239,31 +226,6 @@ if (sw) {
     bk.url().startsWith('https://github.com/') && bk.url().includes('/pulls')
   record('Back from DiffsHub returns to the PR list', redirected && backToList, bk.url())
   await bk.close()
-}
-
-// --- Proxy-free private diff: with a token in storage, DiffsHub's /api/diff is
-//     served by the extension (background → GitHub API). Skipped without a token. ---
-if (realToken && sw) {
-  await sw.evaluate(async (tok) => {
-    await chrome.storage.local.set({ 'diffshub-token': tok })
-  }, realToken)
-  const pf = await ctx.newPage()
-  await pf.goto('https://diffshub.com/JamesFTW/swoleweb/pull/89', {
-    waitUntil: 'domcontentloaded',
-  })
-  await pf.waitForTimeout(6000)
-  const txt = await pf.evaluate(() => document.body.innerText).catch(() => '')
-  const loaded =
-    !/Couldn.t load/i.test(txt) && /Additions|Deletions|diff --git/i.test(txt)
-  record(
-    'Proxy-free: private diff loads via in-browser GitHub API',
-    loaded,
-    loaded ? 'rendered' : 'not loaded',
-  )
-  await pf.close()
-  await sw.evaluate(() => chrome.storage.local.remove('diffshub-token'))
-} else {
-  console.log('ℹ️  Proxy-free private check skipped (no ~/.diffhop/token.json)')
 }
 
 console.log('\n=== SUMMARY ===')

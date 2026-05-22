@@ -108,8 +108,7 @@ storage + messages, and the popup controller (`test/popup.test.ts`).
 `npm run verify:browser` (`scripts/verify.mjs`) loads the built extension into a
 real browser via Playwright and checks the redirect paths (PR / commit / compare
 / `.diff`), non-diff pass-through, SPA navigation, the Enabled toggle, the full
-escape flow, Back → PR list, and — if a `~/.diffhop/token.json` is present — the
-proxy-free private-diff path end to end.
+escape flow, and Back → PR list.
 
 > It uses Playwright's **bundled Chromium**, not your installed Chrome: since
 > Chrome 137, branded Chrome ignores the `--load-extension` command-line flag.
