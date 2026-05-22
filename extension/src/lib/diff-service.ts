@@ -1,12 +1,8 @@
 /**
- * The diff-serving core, extracted from the background script so it can be unit
- * tested without `chrome.*` or the global `fetch`. Given the DiffsHub
- * `/api/diff?path=…` URL, it resolves the GitHub REST API URL and fetches the
- * diff with the user's token.
- *
- * Returns `{ ok: false }` (rather than throwing) for every "let DiffsHub handle
- * it" case — disabled, signed out, or a path that isn't a diff — so the page
- * falls back to DiffsHub's own backend and public repos keep working.
+ * The diff-serving core (testable without chrome.* or global fetch). Resolves
+ * the DiffsHub `/api/diff?path=…` URL to a GitHub REST API URL and fetches the
+ * diff with the user's token. Returns `{ ok: false }` rather than throwing for
+ * the "let DiffsHub handle it" cases (disabled, signed out, non-diff path).
  */
 import { ENDPOINTS } from './config'
 import { toApiUrl } from '../urls'

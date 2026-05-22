@@ -1,12 +1,8 @@
 /**
- * Content script for github.com — fallback redirector for GitHub's in-page
- * (SPA / Turbo) navigations, which make no main-frame request and so aren't
- * caught by the declarativeNetRequest rule that handles full page loads.
- *
- * Escapes that keep the user from being trapped:
- *   - the SKIP_PARAM marker on DiffsHub's "View on GitHub" link (the dNR rule
- *     exempts it; here we strip it and set a sticky per-tab flag)
- *   - Back/Forward navigation onto a GitHub diff page (honored, not bounced)
+ * github.com content script: redirects GitHub's in-page (SPA / Turbo)
+ * navigations, which make no main-frame request and so escape the dNR rule.
+ * Honors two escapes back to GitHub: the SKIP_PARAM marker (stripped here, then
+ * sticky per tab) and Back/Forward onto a diff page.
  */
 import { SKIP_PARAM, SKIP_FLAG } from './lib/config'
 import { isEnabled } from './lib/storage'

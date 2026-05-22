@@ -1,12 +1,8 @@
 /**
- * Content script for GitHub's Device Flow activation page
- * (github.com/login/device). Reads the pending login's user code and fills the
- * activation field so the user doesn't have to type it.
- *
- * Best-effort and fail-safe: if the field isn't present (the user isn't signed
- * into GitHub yet, or this is the consent step), it does nothing and the manual
- * flow is unchanged. It fills and focuses the field only; it never submits the
- * form or clicks "Authorize" so consent always stays an explicit user action.
+ * github.com/login/device content script: fills the activation field with the
+ * pending login's code so the user needn't type it. Best-effort, if the field
+ * isn't there it does nothing. Fills only, never submits or authorizes, so
+ * consent stays an explicit user action.
  */
 import { getDevice } from './lib/storage'
 import { selectUserCode, findCodeFields, fillCode } from './lib/device-fill'

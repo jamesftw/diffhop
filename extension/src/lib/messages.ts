@@ -1,16 +1,8 @@
 /**
- * Typed message contracts shared by every script.
- *
- * Two protocols live here:
- *  - **Runtime messages** — `chrome.runtime.sendMessage` traffic from the popup
- *    and content scripts to the background service worker.
- *  - **Bridge messages** — `window.postMessage` traffic between the MAIN-world
- *    fetch patch (`diffshub-main.ts`) and the isolated content script
- *    (`diffshub.ts`), tagged with {@link BRIDGE_TAG}.
- *
- * Making both protocols discriminated unions lets the compiler check every
- * sender and handler, so adding a message is a one-place type edit instead of
- * an untyped string literal duplicated across files.
+ * Typed message contracts shared by every script: runtime messages
+ * (chrome.runtime.sendMessage → background) and bridge messages (postMessage
+ * between the MAIN-world fetch patch and the isolated diffshub.com script).
+ * Discriminated unions, so the compiler checks every sender and handler.
  */
 import { BRIDGE_TAG } from './config'
 

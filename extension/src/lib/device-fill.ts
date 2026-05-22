@@ -1,15 +1,11 @@
 /**
- * Best-effort autofill for GitHub's Device Flow activation page. Pure helpers,
- * extracted so the code-resolution and field-filling logic can be unit tested
- * under jsdom; the wiring (storage read, MutationObserver) lives in device.ts.
+ * Pure helpers for the Device Flow activation autofill (tested under jsdom; the
+ * DOM/storage wiring lives in device.ts).
  *
- * GitHub renders the code as nine single-character boxes (`user-code-0` …
- * `user-code-8`), where index 4 is a readonly dash. The eight editable ones
- * carry the class `js-user-code-field`. We fill those one character each. A
- * single-field layout is also handled as a fallback.
- *
- * Everything here is fail-safe: when the fields can't be matched, the caller
- * does nothing and the user types the code by hand, exactly as before.
+ * GitHub renders the code as nine single-character boxes (`user-code-0`…`-8`,
+ * index 4 a readonly dash); the eight editable ones carry `js-user-code-field`.
+ * We fill those one char each, with a single-field fallback. Fail-safe: if the
+ * fields don't match, nothing happens and the user types the code.
  */
 
 /** Strip to the alphanumerics the per-character boxes hold (the dash lives in

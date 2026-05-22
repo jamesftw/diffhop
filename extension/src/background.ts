@@ -1,11 +1,7 @@
 /**
- * Service worker: the extension's privileged hub. It keeps the dynamic
- * declarativeNetRequest rules in sync with stored config, serves DiffsHub's
- * authenticated `/api/diff` requests, and drives the GitHub App Device Flow
- * sign-in on a `chrome.alarms` cadence (so it survives the worker shutting down).
- *
- * The logic worth testing lives in `lib/` (diff-service, login-service); this
- * file is the chrome-API wiring that calls into it.
+ * Service worker: keeps the dNR redirect rules in sync with config, serves
+ * DiffsHub's authenticated `/api/diff`, and drives the Device Flow sign-in on a
+ * chrome.alarms cadence. Testable logic lives in `lib/`; this is the wiring.
  */
 import { buildDynamicRules, RULE_IDS } from './rules'
 import { requestDeviceCode, pollOnce } from './auth'
@@ -35,11 +31,8 @@ import {
   type AckResponse,
 } from './lib/messages'
 
-/**
- * Reflect the diff outcome on the toolbar icon + a stored flag the popup reads.
- * A 404 with a valid token means the App isn't installed on that repo, so we
- * nudge the user to grant repositories; a success clears the nudge.
- */
+/** Mirror the diff outcome on the toolbar badge + a flag the popup reads: a 404
+ * means the App isn't installed on that repo; a success clears the nudge. */
 function signalAccess(result: DiffResponse): void {
   if (result.status === 404) {
     void setNeedsAccess(true)

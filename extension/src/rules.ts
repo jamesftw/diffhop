@@ -1,11 +1,7 @@
 /**
- * Builds the dynamic declarativeNetRequest rules: the main-frame redirect of
- * GitHub diff pages → DiffsHub (network-layer, so there's no GitHub paint and
- * Back stays transparent), plus an allow exception for the SKIP_PARAM escape
- * marker.
- *
- * DiffsHub's `/api/diff` fetch is handled separately, in the background script
- * (it does the authenticated GitHub API call) — not here.
+ * Builds the dynamic declarativeNetRequest rules: a main-frame redirect of GitHub
+ * diff pages → DiffsHub (network-layer, so no GitHub paint and Back stays
+ * transparent), plus an allow exception for the SKIP_PARAM escape marker.
  */
 import { SKIP_PARAM } from './lib/config'
 import type { ExtensionConfig } from './lib/storage'

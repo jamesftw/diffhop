@@ -1,8 +1,6 @@
 /**
- * GitHub Device Flow for the diffhop GitHub App, run inside the service worker.
- * No client secret (Device Flow needs none) and no scope: a GitHub App's
- * permissions are defined on the app (read-only here), not requested per-login.
- * `fetch` is injectable for tests. Endpoints live in `lib/config`.
+ * GitHub App Device Flow, run in the service worker. No secret and no scope (a
+ * GitHub App defines its permissions on the app). `fetch` is injectable for tests.
  */
 import { ENDPOINTS } from './lib/config'
 

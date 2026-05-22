@@ -1,13 +1,9 @@
 /**
- * MAIN-world content script for diffshub.com.
- *
- * Patches window.fetch so DiffsHub's client-side `/api/diff` request is served
- * by the extension (which holds the GitHub token and does the authenticated API
- * call) instead of DiffsHub's own backend. Runs in the page's JS world (so it
- * can patch the fetch DiffsHub actually calls); it never sees the token — it
- * relays the request to the isolated content script via postMessage and gets
- * back only the diff text. Falls back to the original fetch if the extension
- * declines (e.g. not signed in), so public repos still work natively.
+ * diffshub.com MAIN-world content script. Patches window.fetch so DiffsHub's
+ * `/api/diff` request is served by the extension instead of its own backend. It
+ * never sees the token: it relays the request to the isolated script via
+ * postMessage and gets back only the diff. Falls back to the real fetch when the
+ * extension declines, so public repos still resolve natively.
  */
 import { BRIDGE_TAG } from './lib/config'
 import { isBridgeMessage, type DiffResponse, type BridgeRequest } from './lib/messages'
@@ -44,7 +40,7 @@ window.fetch = function (
             }),
           )
         } else {
-          // Extension declined (not signed in / disabled) — let DiffsHub handle it.
+          // Extension declined (not signed in / disabled); let DiffsHub handle it.
           resolve(origFetch.call(window, input, init))
         }
       })

@@ -1,10 +1,7 @@
 /**
- * Typed facade over `chrome.storage`. Centralizes the storage schema, the
- * `enabled` default, and the read casts that were otherwise repeated (and could
- * drift) across the background, content, and popup scripts.
- *
- * Sync area: user config (roams across the user's browsers).
- * Local area: the GitHub token and transient Device Flow state (never roams).
+ * Typed facade over `chrome.storage`: one place for the schema and the `enabled`
+ * default. Sync = user config (roams across browsers); local = token + transient
+ * Device Flow state (never roams).
  */
 import { STORAGE_KEYS, DEFAULT_CONFIG } from './config'
 
@@ -65,7 +62,7 @@ export async function clearDevice(): Promise<void> {
   await chrome.storage.local.remove(STORAGE_KEYS.device)
 }
 
-/** Set when a diff fetch 404s — the App lacks access to that repo, so the popup
+/** Set when a diff fetch 404s (the App lacks access to that repo), so the popup
  * nudges the user to grant repositories. */
 export async function getNeedsAccess(): Promise<boolean> {
   const data = await chrome.storage.local.get(STORAGE_KEYS.needsAccess)
