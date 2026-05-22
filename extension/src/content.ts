@@ -11,6 +11,7 @@
 import { SKIP_PARAM, SKIP_FLAG } from './lib/config'
 import { isEnabled } from './lib/storage'
 import { decideRedirect } from './lib/redirect'
+import { extensionAlive } from './lib/runtime'
 
 let lastHref = location.href
 
@@ -56,12 +57,21 @@ function loadedViaBackForward(): boolean {
 }
 
 async function redirectIfDiff(viaHistory: boolean): Promise<void> {
+  // After an extension reload this stale script's chrome handle is dead; bail
+  // quietly instead of throwing "Extension context invalidated".
+  if (!extensionAlive()) return
   // escapeActive() has side effects (sets the sticky flag, strips the marker),
   // so call it before any early return. The bounce decision itself is pure.
   const escaped = escapeActive()
+  let enabled: boolean
+  try {
+    enabled = await isEnabled()
+  } catch {
+    return // context invalidated between the check and the storage read
+  }
   const target = decideRedirect({
     href: location.href,
-    enabled: await isEnabled(),
+    enabled,
     escapeActive: escaped,
     viaHistory,
   })

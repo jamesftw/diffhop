@@ -14,21 +14,29 @@ import {
   type DiffResponse,
   type BridgeResponse,
 } from './lib/messages'
+import { extensionAlive } from './lib/runtime'
 
 // Bridge: MAIN world → background → MAIN world.
 window.addEventListener('message', (e) => {
   if (e.source !== window || !isBridgeMessage(e.data) || e.data.dir !== 'request') return
+  // After an extension reload this stale relay's chrome handle is dead; bail
+  // quietly (the user refreshes the tab) instead of throwing.
+  if (!extensionAlive()) return
   const { id, url } = e.data
   const message: FetchDiffMessage = { type: 'fetchDiff', url }
-  chrome.runtime.sendMessage(message, (resp: DiffResponse | undefined) => {
-    const response: BridgeResponse = {
-      __tag: BRIDGE_TAG,
-      dir: 'response',
-      id,
-      ...(resp ?? { ok: false }),
-    }
-    window.postMessage(response, '*')
-  })
+  try {
+    chrome.runtime.sendMessage(message, (resp: DiffResponse | undefined) => {
+      const response: BridgeResponse = {
+        __tag: BRIDGE_TAG,
+        dir: 'response',
+        id,
+        ...(resp ?? { ok: false }),
+      }
+      window.postMessage(response, '*')
+    })
+  } catch {
+    /* context invalidated between the check and the call */
+  }
 })
 
 function tagLink(a: HTMLAnchorElement): void {

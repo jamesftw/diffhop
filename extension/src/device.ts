@@ -10,11 +10,18 @@
  */
 import { getDevice } from './lib/storage'
 import { selectUserCode, findCodeFields, fillCode } from './lib/device-fill'
+import { extensionAlive } from './lib/runtime'
 
 const FILL_TIMEOUT_MS = 8000
 
 async function autofill(): Promise<void> {
-  const device = await getDevice()
+  if (!extensionAlive()) return
+  let device
+  try {
+    device = await getDevice()
+  } catch {
+    return // extension reloaded; stale tab
+  }
   const stored = device && device.expires_at > Date.now() ? device.user_code : null
   const code = selectUserCode(stored, location.search)
   if (!code) return
