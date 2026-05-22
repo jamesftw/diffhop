@@ -69,17 +69,27 @@ async function fetchDiff(
 
 interface DeviceState {
   device_code: string;
+  user_code: string;
+  verification_uri: string;
   expires_at: number;
 }
 
 async function startLogin(): Promise<{ user_code: string; verification_uri: string }> {
   const device = await requestDeviceCode(GITHUB_CLIENT_ID, OAUTH_SCOPE);
+  const verification_uri =
+    device.verification_uri_complete ??
+    `${device.verification_uri}?user_code=${encodeURIComponent(device.user_code)}`;
   await chrome.storage.local.set({
-    [DEVICE_KEY]: { device_code: device.device_code, expires_at: Date.now() + device.expires_in * 1000 } satisfies DeviceState,
+    [DEVICE_KEY]: {
+      device_code: device.device_code,
+      user_code: device.user_code,
+      verification_uri,
+      expires_at: Date.now() + device.expires_in * 1000,
+    } satisfies DeviceState,
   });
   // Poll on an alarm so it survives the service worker being shut down.
   await chrome.alarms.create(POLL_ALARM, { periodInMinutes: 0.5, delayInMinutes: 0.1 });
-  return { user_code: device.user_code, verification_uri: device.verification_uri };
+  return { user_code: device.user_code, verification_uri };
 }
 
 async function stopPolling(): Promise<void> {

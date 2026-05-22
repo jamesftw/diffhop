@@ -20,6 +20,7 @@ function makeDeps(opts: { config?: { enabled?: boolean }; token?: string } = {})
     onTokenChange: vi.fn((cb) => {
       tokenListener = cb;
     }),
+    getPending: vi.fn(async () => null),
     login: vi.fn(async () => ({ user_code: 'ABCD-1234', verification_uri: 'https://github.com/login/device' })),
     signout: vi.fn(async () => {}),
     openUrl: vi.fn(),

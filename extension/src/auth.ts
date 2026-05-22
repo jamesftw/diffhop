@@ -16,6 +16,8 @@ export interface DeviceCode {
   device_code: string;
   user_code: string;
   verification_uri: string;
+  /** Some providers include a URL with the code pre-filled (GitHub doesn't). */
+  verification_uri_complete?: string;
   interval: number;
   expires_in: number;
 }

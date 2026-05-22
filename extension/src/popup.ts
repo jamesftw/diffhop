@@ -5,15 +5,23 @@
  */
 export const CONFIG_KEY = 'diffshub-config';
 export const TOKEN_KEY = 'diffshub-token';
+export const DEVICE_KEY = 'diffshub-device';
 
 export const DEFAULTS = { enabled: true };
+
+export interface PendingLogin {
+  user_code: string;
+  verification_uri: string;
+}
 
 export interface PopupDeps {
   getConfig(): Promise<{ enabled?: boolean }>;
   setConfig(cfg: { enabled: boolean }): Promise<void>;
   getToken(): Promise<string>;
   onTokenChange(cb: (token: string) => void): void;
-  login(): Promise<{ user_code: string; verification_uri: string }>;
+  /** A login awaiting authorization (so reopening the popup re-shows the code). */
+  getPending(): Promise<PendingLogin | null>;
+  login(): Promise<PendingLogin>;
   signout(): Promise<void>;
   openUrl(url: string): void;
 }
@@ -44,7 +52,15 @@ export function initPopup(doc: Document, deps: PopupDeps): PopupController {
   async function load(): Promise<void> {
     const cfg = { ...DEFAULTS, ...(await deps.getConfig()) };
     enabledEl.checked = cfg.enabled;
-    renderAuth(await deps.getToken());
+    const token = await deps.getToken();
+    renderAuth(token);
+    if (!token) {
+      const pending = await deps.getPending();
+      if (pending) {
+        authStatus.textContent = 'Waiting for authorization…';
+        deviceInfo.textContent = `Code ${pending.user_code} — open github.com/login/device`;
+      }
+    }
   }
 
   enabledEl.addEventListener('change', () => {
@@ -85,6 +101,14 @@ if (typeof document !== 'undefined' && typeof chrome !== 'undefined' && chrome.s
       chrome.storage.onChanged.addListener((changes, area) => {
         if (area === 'local' && changes[TOKEN_KEY]) cb((changes[TOKEN_KEY].newValue as string) ?? '');
       }),
+    getPending: async () => {
+      const d = (await chrome.storage.local.get(DEVICE_KEY))[DEVICE_KEY] as
+        | (PendingLogin & { expires_at: number })
+        | undefined;
+      return d && d.expires_at > Date.now()
+        ? { user_code: d.user_code, verification_uri: d.verification_uri }
+        : null;
+    },
     login: () =>
       chrome.runtime.sendMessage({ type: 'login' }).then((r) => {
         if (!r?.ok) throw new Error(r?.error ?? 'login failed');
