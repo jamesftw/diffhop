@@ -1,27 +1,13 @@
 /**
- * Single source of truth for every compile-time constant in the extension:
- * the GitHub App client, endpoints, storage keys, poll cadence, and the
- * page-bridge tag.
+ * Single source of truth for the extension's compile-time constants (no runtime
+ * env exists in a service worker / content script).
  *
- * A browser extension has no runtime environment (`process.env` is unavailable
- * in a service worker / content script), so "config" here means values baked in
- * at build time. Centralizing them removes the constant drift that comes from
- * re-declaring the same string literal in several entry scripts.
- *
- * NOTE: the `STORAGE_KEYS` values are persisted in users' `chrome.storage`.
- * Changing them would silently sign out and reset every installed user, so they
- * must stay byte-identical across releases.
+ * STORAGE_KEYS values are persisted in users' chrome.storage; renaming one signs
+ * everyone out, so keep them stable across releases.
  */
 
-/**
- * The diffhop **GitHub App** client ID. A GitHub App (not an OAuth App) is used
- * so access is read-only by construction: the app declares Contents +
- * Pull requests as Read-only, and the user can't grant more. The client ID is
- * public by design (Device Flow needs no secret), like the `gh` CLI's.
- *
- * The diffhop GitHub App is owned by the diffhop org and installable on any
- * account.
- */
+/** diffhop's GitHub App client ID. An App (not an OAuth App) keeps access
+ * read-only by construction; the ID is public, Device Flow needs no secret. */
 export const GITHUB_CLIENT_ID = 'Iv23lilMGOrtYO1NhKlZ'
 
 /** External endpoints and origins. */
@@ -33,11 +19,7 @@ export const ENDPOINTS = {
   diffsHub: 'https://diffshub.com',
 } as const
 
-/**
- * The diffhop GitHub App's installation page (github.com/apps/diffhop). Sign-in
- * authorizes the App, but it can only read repos it's *installed* on, so the
- * popup links here to let the user grant repositories.
- */
+/** Where the popup sends users to grant the App access to repos. */
 export const APP_INSTALL_URL = 'https://github.com/apps/diffhop/installations/new'
 
 /** Persisted storage keys (sync = config, local = token + transient flags). */
@@ -49,26 +31,21 @@ export const STORAGE_KEYS = {
   needsAccess: 'diffshub-needs-access',
 } as const
 
-/** chrome.alarms name for the Device Flow token poll. */
+/** chrome.alarms name + cadence for the Device Flow token poll. */
 export const POLL_ALARM = 'diffshub-poll'
-
-/** Device Flow poll cadence (chrome.alarms is minute-granular). */
 export const POLL_PERIOD_MINUTES = 0.5
 export const POLL_DELAY_MINUTES = 0.1
 
 /** Default extension config, applied when nothing is stored yet. */
 export const DEFAULT_CONFIG = { enabled: true } as const
 
-/** Tag stamped on page-bridge postMessages so we ignore unrelated messages. */
+/** Tag on page-bridge postMessages so we ignore unrelated ones. */
 export const BRIDGE_TAG = 'diffhop'
 
 /**
- * Escape-back-to-GitHub markers. DiffsHub's "View on GitHub" link is
- * `rel="noreferrer"`, so origin can't be detected via referrer. Instead a
- * content script on diffshub.com adds `SKIP_PARAM` to those links. It's a
- * *query* (not a hash) so the network-layer declarativeNetRequest rule can see
- * it and exempt the request; the GitHub content script then strips it and
- * records `SKIP_FLAG` so the escape is sticky for in-page navigation.
+ * Escape markers. A diffshub.com content script adds SKIP_PARAM to "View on
+ * GitHub" links; it's a query (not a hash) so the dNR rule can see it and skip
+ * the redirect, and SKIP_FLAG makes the escape sticky per tab.
  */
 export const SKIP_PARAM = 'dh-skip'
 export const SKIP_FLAG = 'diffshub:skip'
