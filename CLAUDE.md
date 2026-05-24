@@ -41,7 +41,7 @@ scripts are thin chrome/DOM wiring over it.
 
 - **`config.ts`** — single source of truth for every constant: the GitHub App
   client ID, endpoints/origins, storage keys, `APP_INSTALL_URL`, poll cadence,
-  the `dh-skip` escape markers. Storage-key *values* are persisted; never rename.
+  the `dh-skip` escape markers. Storage-key _values_ are persisted; never rename.
 - **`messages.ts`** — typed message contracts (discriminated unions) for runtime
   messages (`fetchDiff` / `login` / `pollNow` / `signout`) and the MAIN↔isolated
   bridge, plus `isRuntimeMessage` / `isBridgeMessage` guards.
@@ -148,7 +148,7 @@ scripts are thin chrome/DOM wiring over it.
 - **Keep entry scripts thin**; logic worth testing goes in `lib/` as a pure
   function with injected deps.
 - New content scripts must be added to **both** `build.mjs` and `manifest.json`.
-- Comments are tight: explain the non-obvious *why*, don't restate the code.
+- Comments are tight: explain the non-obvious _why_, don't restate the code.
 - Commits: no Claude attribution.
 
 ## Notes
