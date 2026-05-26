@@ -12,18 +12,18 @@
  * the canonical path DiffsHub serves.
  */
 const DIFF_URL_RE =
-  /^https:\/\/github\.com(\/[^/]+\/[^/]+\/(?:pull\/\d+|commit\/[0-9a-fA-F]{7,40}|compare\/[^/?#]+?))(?:\.diff|\.patch)?(?:[/?#].*)?$/;
+  /^https:\/\/github\.com(\/[^/]+\/[^/]+\/(?:pull\/\d+|commit\/[0-9a-fA-F]{7,40}|compare\/[^/?#]+?))(?:\.diff|\.patch)?(?:[/?#].*)?$/
 
 export function matchGitHubDiffUrl(url: string): { path: string } | null {
-  const m = DIFF_URL_RE.exec(url);
-  if (!m) return null;
-  return { path: m[1] };
+  const m = DIFF_URL_RE.exec(url)
+  if (!m) return null
+  return { path: m[1] }
 }
 
 export function toDiffsHubUrl(url: string): string | null {
-  const match = matchGitHubDiffUrl(url);
-  if (!match) return null;
-  return `https://diffshub.com${match.path}`;
+  const match = matchGitHubDiffUrl(url)
+  if (!match) return null
+  return `https://diffshub.com${match.path}`
 }
 
 /**
@@ -35,10 +35,10 @@ export function toDiffsHubUrl(url: string): string | null {
  *   /o/r/compare/a...b → https://api.github.com/repos/o/r/compare/a...b
  */
 export function toApiUrl(path: string): string | null {
-  const clean = path.replace(/\.(diff|patch)$/, '');
-  const m = /^\/([^/]+)\/([^/]+)\/(pull|commit|compare)\/(.+)$/.exec(clean);
-  if (!m) return null;
-  const [, owner, repo, type, ref] = m;
-  const apiType = type === 'pull' ? 'pulls' : type === 'commit' ? 'commits' : 'compare';
-  return `https://api.github.com/repos/${owner}/${repo}/${apiType}/${ref}`;
+  const clean = path.replace(/\.(diff|patch)$/, '')
+  const m = /^\/([^/]+)\/([^/]+)\/(pull|commit|compare)\/(.+)$/.exec(clean)
+  if (!m) return null
+  const [, owner, repo, type, ref] = m
+  const apiType = type === 'pull' ? 'pulls' : type === 'commit' ? 'commits' : 'compare'
+  return `https://api.github.com/repos/${owner}/${repo}/${apiType}/${ref}`
 }

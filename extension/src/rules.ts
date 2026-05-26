@@ -1,30 +1,23 @@
 /**
- * Builds the dynamic declarativeNetRequest rules: the main-frame redirect of
- * GitHub diff pages → DiffsHub (network-layer, so there's no GitHub paint and
- * Back stays transparent), plus an allow exception for the SKIP_PARAM escape
- * marker.
- *
- * DiffsHub's `/api/diff` fetch is handled separately, in the background script
- * (it does the authenticated GitHub API call) — not here.
+ * Builds the dynamic declarativeNetRequest rules: a main-frame redirect of GitHub
+ * diff pages → DiffsHub (network-layer, so no GitHub paint and Back stays
+ * transparent), plus an allow exception for the SKIP_PARAM escape marker.
  */
-import { SKIP_PARAM } from './escape';
+import { SKIP_PARAM } from './lib/config'
+import type { ExtensionConfig } from './lib/storage'
 
-export const RULE_MAIN_REDIRECT = 1;
-export const RULE_MAIN_ALLOW = 2;
+export const RULE_MAIN_REDIRECT = 1
+export const RULE_MAIN_ALLOW = 2
 
-export const RULE_IDS = [RULE_MAIN_REDIRECT, RULE_MAIN_ALLOW];
+export const RULE_IDS = [RULE_MAIN_REDIRECT, RULE_MAIN_ALLOW]
 
 const DIFF_PATH_REGEX =
-  '^https://github\\.com(/[^/]+/[^/]+/(?:pull/\\d+|commit/\\w+|compare/[^/?#]+)).*$';
-
-export interface ExtensionConfig {
-  enabled: boolean;
-}
+  '^https://github\\.com(/[^/]+/[^/]+/(?:pull/\\d+|commit/\\w+|compare/[^/?#]+)).*$'
 
 export function buildDynamicRules(
   config: ExtensionConfig,
 ): chrome.declarativeNetRequest.Rule[] {
-  if (!config.enabled) return [];
+  if (!config.enabled) return []
 
   return [
     {
@@ -45,5 +38,5 @@ export function buildDynamicRules(
       },
       condition: { regexFilter: DIFF_PATH_REGEX, resourceTypes: ['main_frame'] },
     },
-  ];
+  ]
 }

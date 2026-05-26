@@ -1,138 +1,139 @@
 /**
- * Service worker: keeps the dynamic declarativeNetRequest rules in sync with
- * stored state (enabled flag + GitHub token). The github.com → DiffsHub
- * redirect lives in the content script / dNR; here we only manage rules.
- * (Device-flow login handlers are appended below.)
+ * Service worker: keeps the dNR redirect rules in sync with config, serves
+ * DiffsHub's authenticated `/api/diff`, and drives the Device Flow sign-in on a
+ * chrome.alarms cadence. Testable logic lives in `lib/`.
  */
-import { buildDynamicRules, RULE_IDS } from './rules';
-import { toApiUrl } from './urls';
-import { GITHUB_CLIENT_ID, OAUTH_SCOPE, requestDeviceCode, pollOnce } from './auth';
+import { buildDynamicRules, RULE_IDS } from './rules'
+import { requestDeviceCode, pollOnce } from './auth'
+import {
+  GITHUB_CLIENT_ID,
+  POLL_ALARM,
+  POLL_PERIOD_MINUTES,
+  POLL_DELAY_MINUTES,
+} from './lib/config'
+import {
+  isEnabled,
+  getToken,
+  setToken,
+  clearToken,
+  getDevice,
+  setDevice,
+  clearDevice,
+  setNeedsAccess,
+  onConfigChanged,
+} from './lib/storage'
+import { fetchDiff } from './lib/diff-service'
+import { buildDeviceState, decidePollOutcome } from './lib/login-service'
+import {
+  isRuntimeMessage,
+  type DiffResponse,
+  type LoginResponse,
+  type AckResponse,
+} from './lib/messages'
 
-const CONFIG_KEY = 'diffshub-config';
-const TOKEN_KEY = 'diffshub-token';
-const DEVICE_KEY = 'diffshub-device';
-const POLL_ALARM = 'diffshub-poll';
-
-async function getEnabled(): Promise<boolean> {
-  const data = await chrome.storage.sync.get(CONFIG_KEY);
-  const cfg = data[CONFIG_KEY] as { enabled?: boolean } | undefined;
-  return cfg?.enabled ?? true;
-}
-
-async function getToken(): Promise<string> {
-  const data = await chrome.storage.local.get(TOKEN_KEY);
-  return (data[TOKEN_KEY] as string) ?? '';
+/** Mirror the diff outcome on the toolbar badge + a flag the popup reads: a 404
+ * means the App isn't installed on that repo; a success clears the nudge. */
+function signalAccess(result: DiffResponse): void {
+  if (result.status === 404) {
+    void setNeedsAccess(true)
+    void chrome.action.setBadgeText({ text: '!' })
+    void chrome.action.setBadgeBackgroundColor({ color: '#bf8700' })
+  } else if (result.status && result.status >= 200 && result.status < 300) {
+    void setNeedsAccess(false)
+    void chrome.action.setBadgeText({ text: '' })
+  }
 }
 
 async function syncRules(): Promise<void> {
   await chrome.declarativeNetRequest.updateDynamicRules({
     removeRuleIds: RULE_IDS,
-    addRules: buildDynamicRules({ enabled: await getEnabled() }),
-  });
+    addRules: buildDynamicRules({ enabled: await isEnabled() }),
+  })
 }
 
-chrome.runtime.onInstalled.addListener(syncRules);
-chrome.runtime.onStartup.addListener(syncRules);
+chrome.runtime.onInstalled.addListener(syncRules)
+chrome.runtime.onStartup.addListener(syncRules)
+onConfigChanged(() => void syncRules())
 
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' && changes[CONFIG_KEY]) void syncRules();
-});
+// --- Device Flow sign-in ---------------------------------------------------
 
-/**
- * Serve DiffsHub's /api/diff request: fetch the diff from the GitHub REST API
- * with the user's token. Returns { ok: false } when disabled or signed out so
- * the page falls back to DiffsHub's own backend (public repos still work).
- */
-async function fetchDiff(
-  diffshubUrl: string,
-): Promise<{ ok: boolean; status?: number; body?: string }> {
-  if (!(await getEnabled())) return { ok: false };
-  const token = await getToken();
-  if (token.trim() === '') return { ok: false };
-
-  // DiffsHub calls fetch with a relative URL, so resolve against its origin.
-  const pathParam = new URL(diffshubUrl, 'https://diffshub.com').searchParams.get('path'); // URL-decoded
-  const apiUrl = pathParam && toApiUrl(pathParam);
-  if (!apiUrl) return { ok: false };
-
-  const res = await fetch(apiUrl, {
-    headers: {
-      Accept: 'application/vnd.github.diff',
-      'X-GitHub-Api-Version': '2022-11-28',
-      Authorization: `Bearer ${token}`,
-    },
-  });
-  return { ok: true, status: res.status, body: await res.text() };
-}
-
-// --- Device Flow login -----------------------------------------------------
-
-interface DeviceState {
-  device_code: string;
-  user_code: string;
-  verification_uri: string;
-  expires_at: number;
+/** Poll the token endpoint once and act on the result. Driven by the popup
+ * (fast, while open) and the alarm backstop (when the popup is closed). */
+async function pollTick(): Promise<void> {
+  const device = await getDevice()
+  if (!device) return void stopPolling()
+  const result = await pollOnce(GITHUB_CLIENT_ID, device.device_code)
+  const outcome = decidePollOutcome(device, Date.now(), result)
+  if (outcome.action === 'token') {
+    await setToken(outcome.token)
+    await stopPolling()
+  } else if (outcome.action === 'stop') {
+    await stopPolling()
+  }
+  // 'wait' (pending / slow_down): keep polling.
 }
 
 async function startLogin(): Promise<{ user_code: string; verification_uri: string }> {
-  const device = await requestDeviceCode(GITHUB_CLIENT_ID, OAUTH_SCOPE);
-  const verification_uri =
-    device.verification_uri_complete ??
-    `${device.verification_uri}?user_code=${encodeURIComponent(device.user_code)}`;
-  await chrome.storage.local.set({
-    [DEVICE_KEY]: {
-      device_code: device.device_code,
-      user_code: device.user_code,
-      verification_uri,
-      expires_at: Date.now() + device.expires_in * 1000,
-    } satisfies DeviceState,
-  });
-  // Poll on an alarm so it survives the service worker being shut down.
-  await chrome.alarms.create(POLL_ALARM, { periodInMinutes: 0.5, delayInMinutes: 0.1 });
-  return { user_code: device.user_code, verification_uri };
+  const device = await requestDeviceCode(GITHUB_CLIENT_ID)
+  const state = buildDeviceState(device, Date.now())
+  await setDevice(state)
+  // Backstop poll for when the popup is closed (the popup polls fast while open).
+  await chrome.alarms.create(POLL_ALARM, {
+    periodInMinutes: POLL_PERIOD_MINUTES,
+    delayInMinutes: POLL_DELAY_MINUTES,
+  })
+  return { user_code: state.user_code, verification_uri: state.verification_uri }
 }
 
 async function stopPolling(): Promise<void> {
-  await chrome.alarms.clear(POLL_ALARM);
-  await chrome.storage.local.remove(DEVICE_KEY);
+  await chrome.alarms.clear(POLL_ALARM)
+  await clearDevice()
 }
 
-chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name !== POLL_ALARM) return;
-  const data = await chrome.storage.local.get(DEVICE_KEY);
-  const device = data[DEVICE_KEY] as DeviceState | undefined;
-  if (!device || Date.now() > device.expires_at) {
-    await stopPolling();
-    return;
-  }
-  const result = await pollOnce(GITHUB_CLIENT_ID, device.device_code);
-  if (result.status === 'ok') {
-    await chrome.storage.local.set({ [TOKEN_KEY]: result.token }); // triggers syncRules
-    await stopPolling();
-  } else if (result.status === 'error') {
-    await stopPolling();
-  }
-  // pending / slow_down: keep waiting for the next alarm.
-});
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === POLL_ALARM) void pollTick()
+})
+
+// --- Message router --------------------------------------------------------
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg?.type === 'fetchDiff') {
-    fetchDiff(msg.url).then(sendResponse, () => sendResponse({ ok: false }));
-    return true; // async response
-  }
-  if (msg?.type === 'login') {
-    startLogin().then(
-      (info) => sendResponse({ ok: true, ...info }),
-      (err) => sendResponse({ ok: false, error: String(err?.message ?? err) }),
-    );
-    return true; // async response
-  }
-  if (msg?.type === 'signout') {
-    Promise.all([chrome.storage.local.remove(TOKEN_KEY), stopPolling()]).then(
-      () => sendResponse({ ok: true }),
+  if (!isRuntimeMessage(msg)) return undefined
+
+  if (msg.type === 'fetchDiff') {
+    // `fetch` must keep its global `this`; passed bare and called as
+    // `deps.fetch(...)` it throws "Illegal invocation", so bind it here.
+    fetchDiff(msg.url, { isEnabled, getToken, fetch: fetch.bind(globalThis) }).then(
+      (result) => {
+        signalAccess(result)
+        sendResponse(result)
+      },
       () => sendResponse({ ok: false }),
-    );
-    return true;
+    )
+    return true // async response
   }
-  return undefined;
-});
+  if (msg.type === 'login') {
+    startLogin()
+      .then(
+        (info): LoginResponse => ({ ok: true, ...info }),
+        (err): LoginResponse => ({ ok: false, error: String(err?.message ?? err) }),
+      )
+      .then(sendResponse)
+    return true
+  }
+  if (msg.type === 'pollNow') {
+    pollTick().then(
+      () => sendResponse({ ok: true } satisfies AckResponse),
+      () => sendResponse({ ok: false } satisfies AckResponse),
+    )
+    return true
+  }
+  if (msg.type === 'signout') {
+    void chrome.action.setBadgeText({ text: '' })
+    Promise.all([clearToken(), stopPolling(), setNeedsAccess(false)]).then(
+      () => sendResponse({ ok: true } satisfies AckResponse),
+      () => sendResponse({ ok: false } satisfies AckResponse),
+    )
+    return true
+  }
+  return undefined
+})

@@ -2,12 +2,13 @@
 
 A Chrome extension (MV3) that redirects GitHub diff URLs to
 [DiffsHub](https://diffshub.com). Public repos work out of the box; **private
-repos work after a one-click GitHub sign-in** — no proxy, no terminal, no token
-to copy.
+repos work after a one-time, read-only GitHub sign-in**, no proxy and no
+terminal.
 
-- **Public repos:** just install — every GitHub diff page redirects to DiffsHub.
-- **Private repos:** click **Sign in with GitHub** in the popup once. The
-  extension then fetches private diffs from the GitHub API on your behalf.
+- **Public repos:** just install. Every GitHub diff page redirects to DiffsHub.
+- **Private repos:** click **Sign in with GitHub** in the popup once. You
+  authorize the diffhop **GitHub App** (read-only) on the repos you choose, and
+  the extension then fetches private diffs from the GitHub API on your behalf.
 
 ## How it works
 
@@ -29,15 +30,25 @@ to copy.
 
 There is **no localhost proxy** — everything runs inside the extension.
 
-## Private repos: sign in (one click)
+## Private repos: sign in (read-only)
 
-1. Open the **diffhop** popup → **Sign in with GitHub**.
-2. A github.com tab opens asking you to approve a short code — click **Authorize**.
+1. Open the **diffhop** popup → **Sign in with GitHub**. A github.com tab opens
+   with the device code **already filled in** (the extension fills it for you).
+2. Click **Continue**, then **Authorize**, and pick the repositories to grant
+   diffhop read access to.
 3. The popup flips to **Signed in**. Private PRs/commits/compares now render.
 
-This uses GitHub's **OAuth Device Flow** with a public Client ID (no secret); the
-token is a normal GitHub user token stored in the extension's `chrome.storage`,
-nowhere else. Sign out anytime from the popup.
+diffhop only ever reads diffs, so it authenticates as a **GitHub App** whose
+permissions are **Contents: Read-only** and **Pull requests: Read-only**. Because
+the permissions live on the App, the grant is read-only by construction, you
+can't accidentally give it write access, and you choose exactly which repos it
+sees. (GitHub has no read-only _OAuth scope_, the `repo` scope grants write too,
+which is why an App is used.) The user token is stored in the extension's
+`chrome.storage`, nowhere else, and **never reaches DiffsHub's page**.
+
+> The sign-in uses GitHub's Device Flow, so there's no client secret and no
+> localhost callback. To read more repos later, grant them to the diffhop App
+> from your GitHub settings. Sign out anytime from the popup.
 
 ## Getting back to GitHub (escape)
 
@@ -50,7 +61,7 @@ Every GitHub diff page redirects to DiffsHub, so to avoid trapping you:
   without bouncing back. (A query, not a hash, because hashes aren't visible to
   declarativeNetRequest.)
 - Or press the browser's **Back** button. Reaching a GitHub diff page via
-  Back/Forward is honored (not bounced); a fresh visit to a *new* diff still
+  Back/Forward is honored (not bounced); a fresh visit to a _new_ diff still
   redirects, so nothing silently "goes dead."
 - DiffsHub can leave duplicate same-URL history entries; a guard in the DiffsHub
   content script fast-forwards Back past them to your real previous page.
@@ -89,15 +100,39 @@ npm run verify:browser  # builds + drives a real browser end-to-end
 ```
 
 Unit coverage: URL + API-URL mapping (`test/urls.test.ts`), dynamic rule
-construction (`test/rules.test.ts`), the Device Flow auth (`test/auth.test.ts`),
-and the popup controller (`test/popup.test.ts`).
+construction (`test/rules.test.ts`), the diff service (`test/diff-service.test.ts`),
+the Device Flow auth + login decisions (`test/auth.test.ts`,
+`test/login-service.test.ts`), device-code autofill (`test/device-fill.test.ts`),
+storage + messages, and the popup controller (`test/popup.test.ts`).
 
 `npm run verify:browser` (`scripts/verify.mjs`) loads the built extension into a
 real browser via Playwright and checks the redirect paths (PR / commit / compare
 / `.diff`), non-diff pass-through, SPA navigation, the Enabled toggle, the full
-escape flow, Back → PR list, and — if a `~/.diffhop/token.json` is present — the
-proxy-free private-diff path end to end.
+escape flow, and Back → PR list.
 
 > It uses Playwright's **bundled Chromium**, not your installed Chrome: since
 > Chrome 137, branded Chrome ignores the `--load-extension` command-line flag.
 > (Loading via `chrome://extensions` → Load unpacked is unaffected.)
+
+## Project layout
+
+All cross-cutting constants and testable logic live under
+`extension/src/lib/`; the entry scripts (`background`, `content`, `popup`,
+`device`, `diffshub*`) are thin wiring over them.
+
+- `lib/config.ts` — single source of truth for the GitHub App client,
+  endpoints, storage keys, and the escape markers
+- `lib/messages.ts` — typed runtime + page-bridge message contracts
+- `lib/storage.ts` — typed `chrome.storage` facade
+- `lib/diff-service.ts`, `lib/login-service.ts`, `lib/device-fill.ts`,
+  `lib/redirect.ts` — pure cores
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev loop and conventions, and
+[SECURITY.md](SECURITY.md) for how the extension handles your GitHub token and
+how to report vulnerabilities.
+
+## License
+
+[MIT](LICENSE) © James Andrews

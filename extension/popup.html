@@ -7,24 +7,30 @@
     <title>diffhop</title>
   </head>
   <body>
-    <header>
+    <header class="brand">
+      <img class="mark" src="icons/icon48.png" alt="" width="20" height="20" />
       <h1>diffhop</h1>
     </header>
     <form id="form" novalidate>
       <label class="row toggle">
-        <span class="label">Enabled</span>
+        <span class="label">Redirect to DiffsHub</span>
         <input type="checkbox" id="enabled" />
       </label>
 
       <div class="row stacked">
-        <span class="label">Private repos <span class="hint" id="authStatus">Not signed in</span></span>
+        <span class="label"
+          >Private repos <span class="hint" id="authStatus">Not signed in</span></span
+        >
         <button type="button" id="authBtn" class="btn">Sign in with GitHub</button>
-        <p id="deviceInfo" class="help" role="status" aria-live="polite"></p>
+        <p id="authMsg" class="help" role="status" aria-live="polite"></p>
+        <button type="button" id="manageRepos" class="link" hidden>
+          Choose repositories
+        </button>
       </div>
 
       <p class="help">
-        Public repos work with no setup. For private repos, sign in once —
-        you'll approve a code on github.com (no token to copy).
+        Public repos work instantly. For private repos, sign in to GitHub and grant
+        diffhop read-only access to the repos you choose.
       </p>
     </form>
     <script src="popup.js"></script>
