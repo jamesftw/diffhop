@@ -34,11 +34,32 @@ export function toDiffsHubUrl(url: string): string | null {
  *   /o/r/commit/<sha>  → https://api.github.com/repos/o/r/commits/<sha>
  *   /o/r/compare/a...b → https://api.github.com/repos/o/r/compare/a...b
  */
-export function toApiUrl(path: string): string | null {
+export type DiffType = 'pull' | 'commit' | 'compare'
+
+export interface ParsedDiffPath {
+  owner: string
+  repo: string
+  type: DiffType
+  ref: string
+}
+
+/**
+ * Parse a GitHub diff page path into its components, or null for paths that
+ * aren't a pull/commit/compare diff. The `.diff`/`.patch` suffix is stripped
+ * first so both the page URL and its raw-diff form parse the same.
+ */
+export function parseDiffPath(path: string): ParsedDiffPath | null {
   const clean = path.replace(/\.(diff|patch)$/, '')
   const m = /^\/([^/]+)\/([^/]+)\/(pull|commit|compare)\/(.+)$/.exec(clean)
   if (!m) return null
   const [, owner, repo, type, ref] = m
+  return { owner, repo, type: type as DiffType, ref }
+}
+
+export function toApiUrl(path: string): string | null {
+  const parsed = parseDiffPath(path)
+  if (!parsed) return null
+  const { owner, repo, type, ref } = parsed
   const apiType = type === 'pull' ? 'pulls' : type === 'commit' ? 'commits' : 'compare'
   return `https://api.github.com/repos/${owner}/${repo}/${apiType}/${ref}`
 }
