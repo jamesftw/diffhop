@@ -5,7 +5,8 @@
  * the "let DiffsHub handle it" cases (disabled, signed out, non-diff path).
  */
 import { ENDPOINTS } from './config'
-import { toApiUrl } from '../urls'
+import { parseDiffPath, toApiUrl } from '../urls'
+import { fetchLargeDiff } from './diff-fallback'
 import type { DiffResponse } from './messages'
 
 export interface DiffServiceDeps {
@@ -34,5 +35,14 @@ export async function fetchDiff(
       Authorization: `Bearer ${token}`,
     },
   })
+
+  // The `.diff` media type caps out at 300 files (406 too_large). Fall back to
+  // the paginated files listing and rebuild the diff ourselves.
+  if (res.status === 406) {
+    const parsed = parseDiffPath(pathParam!)
+    const diff = parsed && (await fetchLargeDiff(parsed, token, deps.fetch))
+    if (diff != null) return { ok: true, status: 200, body: diff }
+  }
+
   return { ok: true, status: res.status, body: await res.text() }
 }
