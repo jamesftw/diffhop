@@ -16,7 +16,7 @@ interface GitHubFile {
   filename: string
   previous_filename?: string
   status: string // added | removed | modified | renamed | copied | changed | unchanged
-  patch?: string // unified hunks; absent for binary files and pure renames
+  patch?: string // unified hunks; absent for binary files, large diffs, pure renames
 }
 
 // The files endpoints page at up to 100 items; cap pages so a pathological PR
@@ -42,14 +42,24 @@ function extractFiles(type: DiffType, json: unknown): GitHubFile[] {
   return Array.isArray(files) ? (files as GitHubFile[]) : []
 }
 
-/** Rebuild one file's section of a unified git diff from its files-API entry. */
+/**
+ * Rebuild one file's section of a unified git diff from its files-API entry, or
+ * '' for an entry that contributes no diff (status 'unchanged'). A bare
+ * `diff --git` header with no body would corrupt the boundary with the next
+ * file, so such entries are dropped by reconstructDiff.
+ */
 export function fileToDiff(f: GitHubFile): string {
+  if (f.status === 'unchanged') return ''
+
   const newPath = f.filename
   const oldPath = f.previous_filename ?? f.filename
+  const added = f.status === 'added'
+  const removed = f.status === 'removed'
   const lines = [`diff --git a/${oldPath} b/${newPath}`]
 
-  if (f.status === 'added') lines.push('new file mode 100644')
-  else if (f.status === 'removed') lines.push('deleted file mode 100644')
+  if (added) lines.push('new file mode 100644')
+  else if (removed) lines.push('deleted file mode 100644')
+  else if (f.status === 'copied') lines.push(`copy from ${oldPath}`, `copy to ${newPath}`)
   else if (
     f.status === 'renamed' ||
     (f.previous_filename && f.previous_filename !== newPath)
@@ -58,20 +68,28 @@ export function fileToDiff(f: GitHubFile): string {
   }
 
   if (f.patch) {
-    lines.push(`--- ${f.status === 'added' ? '/dev/null' : `a/${oldPath}`}`)
-    lines.push(`+++ ${f.status === 'removed' ? '/dev/null' : `b/${newPath}`}`)
+    lines.push(`--- ${added ? '/dev/null' : `a/${oldPath}`}`)
+    lines.push(`+++ ${removed ? '/dev/null' : `b/${newPath}`}`)
     lines.push(f.patch)
-  } else if (f.status !== 'renamed' && f.status !== 'unchanged') {
-    // No patch and not a pure rename → binary (or otherwise opaque) change.
-    lines.push(`Binary files a/${oldPath} and b/${newPath} differ`)
+  } else if (f.status !== 'renamed' && f.status !== 'copied') {
+    // No patch: GitHub omits it for binary files AND for text files whose diff
+    // exceeds its size limit — common in the large PRs this path handles. We
+    // can't tell them apart or recover the content, so emit the parser-safe
+    // "Binary files" marker against the correct /dev/null side for add/delete.
+    const oldSide = added ? '/dev/null' : `a/${oldPath}`
+    const newSide = removed ? '/dev/null' : `b/${newPath}`
+    lines.push(`Binary files ${oldSide} and ${newSide} differ`)
   }
 
   return lines.join('\n')
 }
 
-/** Stitch a list of files-API entries into one unified diff. */
+/** Stitch a list of files-API entries into one unified diff (dropping empties). */
 export function reconstructDiff(files: GitHubFile[]): string {
-  return files.map(fileToDiff).join('\n')
+  return files
+    .map(fileToDiff)
+    .filter((section) => section !== '')
+    .join('\n')
 }
 
 /** Follow the `rel="next"` URL from a Link header, if any. */
@@ -83,14 +101,23 @@ function nextLink(header: string | null): string | null {
 
 /**
  * Page through the files listing for a diff and rebuild it as a unified diff.
- * Returns the diff text, or null if the first page couldn't be fetched (so the
- * caller can surface the original error instead of a blank diff).
+ * Returns null whenever the result would be incomplete, so the caller can
+ * surface the original 406 (an honest "too large" error) rather than serve a
+ * silently truncated diff that looks complete. null is returned when:
+ *   - the diff is a `compare` (its file list caps at 300 with no pagination, so
+ *     a 406 — which means >300 files — can never be fully retrieved);
+ *   - any page fails to fetch;
+ *   - there are more pages than MAX_PAGES (>3000 files, GitHub's own ceiling);
+ *   - no files come back at all.
  */
 export async function fetchLargeDiff(
   parsed: ParsedDiffPath,
   token: string,
   doFetch: typeof fetch,
 ): Promise<string | null> {
+  // compare/{basehead} only ever returns the first 300 files; we'd truncate.
+  if (parsed.type === 'compare') return null
+
   const headers = {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
@@ -102,11 +129,12 @@ export async function fetchLargeDiff(
 
   const files: GitHubFile[] = []
   let url: string | null = first.toString()
-  for (let page = 0; url && page < MAX_PAGES; page++) {
+  for (let page = 0; url; page++) {
+    if (page >= MAX_PAGES) return null // more files than we'll page through
     const res: Response = await doFetch(url, { headers })
-    if (!res.ok) return files.length > 0 ? reconstructDiff(files) : null
+    if (!res.ok) return null // a missing page means an incomplete diff
     files.push(...extractFiles(parsed.type, await res.json()))
     url = nextLink(res.headers.get('Link'))
   }
-  return reconstructDiff(files)
+  return files.length > 0 ? reconstructDiff(files) : null
 }
