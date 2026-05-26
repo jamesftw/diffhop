@@ -19,12 +19,14 @@ describe('isBridgeMessage', () => {
 
 describe('isRuntimeMessage', () => {
   it('accepts the known message types', () => {
-    expect(isRuntimeMessage({ type: 'fetchDiff', url: 'x' })).toBe(true)
     expect(isRuntimeMessage({ type: 'login' })).toBe(true)
+    expect(isRuntimeMessage({ type: 'pollNow' })).toBe(true)
     expect(isRuntimeMessage({ type: 'signout' })).toBe(true)
   })
 
   it('rejects unknown types and non-objects', () => {
+    // 'fetchDiff' is gone — diffs now stream over a port, not a runtime message.
+    expect(isRuntimeMessage({ type: 'fetchDiff', url: 'x' })).toBe(false)
     expect(isRuntimeMessage({ type: 'nope' })).toBe(false)
     expect(isRuntimeMessage({})).toBe(false)
     expect(isRuntimeMessage(undefined)).toBe(false)

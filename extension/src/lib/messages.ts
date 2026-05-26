@@ -8,11 +8,6 @@ import { BRIDGE_TAG } from './config'
 
 // --- Runtime messages (→ background) ---------------------------------------
 
-/** Ask the background to serve DiffsHub's `/api/diff` via the GitHub API. */
-export interface FetchDiffMessage {
-  type: 'fetchDiff'
-  url: string
-}
 /** Start the GitHub Device Flow sign-in (request a device code, begin polling). */
 export interface LoginMessage {
   type: 'login'
@@ -26,19 +21,8 @@ export interface SignoutMessage {
   type: 'signout'
 }
 
-export type RuntimeMessage =
-  | FetchDiffMessage
-  | LoginMessage
-  | PollNowMessage
-  | SignoutMessage
+export type RuntimeMessage = LoginMessage | PollNowMessage | SignoutMessage
 
-/** Response to {@link FetchDiffMessage}. `ok: false` means "page should fall
- * back to DiffsHub's own backend" (disabled, signed out, or unmappable URL). */
-export interface DiffResponse {
-  ok: boolean
-  status?: number
-  body?: string
-}
 /** Response to {@link LoginMessage}: the device code + where to enter it. */
 export type LoginResponse =
   | { ok: true; user_code: string; verification_uri: string }
@@ -50,22 +34,61 @@ export interface AckResponse {
 }
 
 // --- Bridge messages (MAIN world ↔ isolated content script) ----------------
+//
+// The diff is streamed, so a single request is answered by a sequence: one
+// `head` (or a `head` with ok:false meaning "fall back to DiffsHub"), then zero
+// or more `chunk`s, then exactly one `end` or `error`. MAIN→isolated also sends
+// a `cancel` when the page aborts the response (e.g. navigating to another diff).
 
-/** MAIN world asks the isolated script to fetch a diff through the extension. */
+/** MAIN world asks the isolated script to stream a diff through the extension. */
 export interface BridgeRequest {
   __tag: typeof BRIDGE_TAG
   dir: 'request'
   id: number
   url: string
 }
-/** Isolated script returns the diff (or a decline) to the MAIN world. */
-export interface BridgeResponse extends DiffResponse {
+/** MAIN world aborts an in-flight stream (the page cancelled the Response body). */
+export interface BridgeCancel {
   __tag: typeof BRIDGE_TAG
-  dir: 'response'
+  dir: 'cancel'
+  id: number
+}
+/** First reply: ok:false → MAIN falls back to DiffsHub's own fetch; otherwise
+ * the HTTP status, followed by chunk/end messages. */
+export interface BridgeHead {
+  __tag: typeof BRIDGE_TAG
+  dir: 'head'
+  id: number
+  ok: boolean
+  status?: number
+}
+/** One slice of the diff body (transferred as an ArrayBuffer to avoid a copy). */
+export interface BridgeChunk {
+  __tag: typeof BRIDGE_TAG
+  dir: 'chunk'
+  id: number
+  bytes: ArrayBuffer
+}
+/** Body finished cleanly. */
+export interface BridgeEnd {
+  __tag: typeof BRIDGE_TAG
+  dir: 'end'
+  id: number
+}
+/** Body failed mid-stream. */
+export interface BridgeError {
+  __tag: typeof BRIDGE_TAG
+  dir: 'error'
   id: number
 }
 
-export type BridgeMessage = BridgeRequest | BridgeResponse
+export type BridgeMessage =
+  | BridgeRequest
+  | BridgeCancel
+  | BridgeHead
+  | BridgeChunk
+  | BridgeEnd
+  | BridgeError
 
 /** Narrow an arbitrary `postMessage` payload to one of ours. */
 export function isBridgeMessage(data: unknown): data is BridgeMessage {
@@ -80,7 +103,31 @@ export function isBridgeMessage(data: unknown): data is BridgeMessage {
 export function isRuntimeMessage(msg: unknown): msg is RuntimeMessage {
   if (typeof msg !== 'object' || msg === null) return false
   const type = (msg as { type?: unknown }).type
-  return (
-    type === 'fetchDiff' || type === 'login' || type === 'pollNow' || type === 'signout'
-  )
+  return type === 'login' || type === 'pollNow' || type === 'signout'
 }
+
+// --- Diff-stream port messages (isolated content script ↔ background) -------
+//
+// Sent over a dedicated chrome.runtime.Port (name = DIFF_STREAM_PORT), so they
+// need no tag. The isolated script opens the port and sends `start`; the
+// background replies with head → chunk* → end|error. `cancel` (or closing the
+// port) aborts the upstream GitHub fetch.
+
+/** isolated → background: begin streaming the diff for this DiffsHub URL. */
+export interface PortStart {
+  type: 'start'
+  url: string
+}
+/** isolated → background: abort the in-flight fetch. */
+export interface PortCancel {
+  type: 'cancel'
+}
+export type DiffPortInbound = PortStart | PortCancel
+
+/** background → isolated: the streaming reply, mirroring the bridge head/chunk
+ * /end/error (chunk bytes are a Uint8Array; ports structured-clone, no transfer). */
+export type DiffPortOutbound =
+  | { type: 'head'; ok: boolean; status?: number }
+  | { type: 'chunk'; bytes: Uint8Array }
+  | { type: 'end' }
+  | { type: 'error' }

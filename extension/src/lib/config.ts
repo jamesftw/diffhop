@@ -48,6 +48,11 @@ export const DEFAULT_CONFIG = { enabled: true } as const
 /** Tag on page-bridge postMessages so we ignore unrelated ones. */
 export const BRIDGE_TAG = 'diffhop'
 
+/** Name of the long-lived port the diffshub.com bridge opens to stream a diff
+ * from the background (kept open for the lifetime of one diff response, which
+ * also keeps the MV3 service worker alive while bytes are flowing). */
+export const DIFF_STREAM_PORT = 'diff-stream'
+
 /**
  * Escape markers. A diffshub.com content script adds SKIP_PARAM to "View on
  * GitHub" links; it's a query (not a hash) so the dNR rule can see it and skip

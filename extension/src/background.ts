@@ -7,6 +7,7 @@ import { buildDynamicRules, RULE_IDS } from './rules'
 import { requestDeviceCode, pollOnce } from './auth'
 import {
   GITHUB_CLIENT_ID,
+  DIFF_STREAM_PORT,
   POLL_ALARM,
   POLL_PERIOD_MINUTES,
   POLL_DELAY_MINUTES,
@@ -22,27 +23,71 @@ import {
   setNeedsAccess,
   onConfigChanged,
 } from './lib/storage'
-import { fetchDiff } from './lib/diff-service'
+import { streamDiff, type DiffSink } from './lib/diff-service'
 import { buildDeviceState, decidePollOutcome } from './lib/login-service'
 import {
   isRuntimeMessage,
-  type DiffResponse,
+  type DiffPortInbound,
+  type DiffPortOutbound,
   type LoginResponse,
   type AckResponse,
 } from './lib/messages'
 
 /** Mirror the diff outcome on the toolbar badge + a flag the popup reads: a 404
  * means the App isn't installed on that repo; a success clears the nudge. */
-function signalAccess(result: DiffResponse): void {
-  if (result.status === 404) {
+function signalAccess(status?: number): void {
+  if (status === 404) {
     void setNeedsAccess(true)
     void chrome.action.setBadgeText({ text: '!' })
     void chrome.action.setBadgeBackgroundColor({ color: '#bf8700' })
-  } else if (result.status && result.status >= 200 && result.status < 300) {
+  } else if (status && status >= 200 && status < 300) {
     void setNeedsAccess(false)
     void chrome.action.setBadgeText({ text: '' })
   }
 }
+
+// --- Diff streaming --------------------------------------------------------
+
+/** The diffshub.com bridge opens a port per diff; we stream the GitHub response
+ * back over it (head → chunk* → end|error) and abort the fetch if it closes. */
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== DIFF_STREAM_PORT) return
+  const controller = new AbortController()
+  let started = false
+
+  const post = (msg: DiffPortOutbound): void => {
+    try {
+      port.postMessage(msg)
+    } catch {
+      /* port already disconnected; the abort below stops the fetch */
+    }
+  }
+  const sink: DiffSink = {
+    head: (ok, status) => {
+      signalAccess(status)
+      post({ type: 'head', ok, status })
+    },
+    chunk: (bytes) => post({ type: 'chunk', bytes }),
+    end: () => post({ type: 'end' }),
+    error: () => post({ type: 'error' }),
+  }
+
+  port.onMessage.addListener((msg: DiffPortInbound) => {
+    if (msg.type === 'cancel') {
+      controller.abort()
+    } else if (msg.type === 'start' && !started) {
+      started = true
+      // `fetch` must keep its global `this`; bound here so streamDiff's
+      // `deps.fetch(...)` call doesn't throw "Illegal invocation".
+      streamDiff(
+        msg.url,
+        { isEnabled, getToken, fetch: fetch.bind(globalThis), signal: controller.signal },
+        sink,
+      ).catch(() => sink.error())
+    }
+  })
+  port.onDisconnect.addListener(() => controller.abort())
+})
 
 async function syncRules(): Promise<void> {
   await chrome.declarativeNetRequest.updateDynamicRules({
@@ -99,18 +144,6 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!isRuntimeMessage(msg)) return undefined
 
-  if (msg.type === 'fetchDiff') {
-    // `fetch` must keep its global `this`; passed bare and called as
-    // `deps.fetch(...)` it throws "Illegal invocation", so bind it here.
-    fetchDiff(msg.url, { isEnabled, getToken, fetch: fetch.bind(globalThis) }).then(
-      (result) => {
-        signalAccess(result)
-        sendResponse(result)
-      },
-      () => sendResponse({ ok: false }),
-    )
-    return true // async response
-  }
   if (msg.type === 'login') {
     startLogin()
       .then(

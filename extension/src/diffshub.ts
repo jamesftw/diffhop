@@ -7,35 +7,89 @@
  *  3. Fast-forward Back past DiffsHub's duplicate history entries.
  */
 import { matchGitHubDiffUrl } from './urls'
-import { SKIP_PARAM, BRIDGE_TAG } from './lib/config'
+import { SKIP_PARAM, BRIDGE_TAG, DIFF_STREAM_PORT } from './lib/config'
 import {
   isBridgeMessage,
-  type FetchDiffMessage,
-  type DiffResponse,
-  type BridgeResponse,
+  type BridgeMessage,
+  type DiffPortOutbound,
 } from './lib/messages'
 import { extensionAlive } from './lib/runtime'
 
-// Bridge: MAIN world → background → MAIN world.
-window.addEventListener('message', (e) => {
-  if (e.source !== window || !isBridgeMessage(e.data) || e.data.dir !== 'request') return
-  // After an extension reload this stale relay's chrome handle is dead; bail
-  // quietly (the user refreshes the tab) instead of throwing.
-  if (!extensionAlive()) return
-  const { id, url } = e.data
-  const message: FetchDiffMessage = { type: 'fetchDiff', url }
+// Bridge: MAIN world ↔ background, streamed over a per-request port. One MAIN
+// "request" opens a port; the background streams head → chunk* → end|error back,
+// which we relay to MAIN. A MAIN "cancel" (page aborted the body) closes the port.
+const ports = new Map<number, chrome.runtime.Port>()
+
+/** Post a bridge message to the MAIN world, optionally transferring buffers. */
+function toMain(msg: BridgeMessage, transfer: Transferable[] = []): void {
+  window.postMessage(msg, '*', transfer)
+}
+
+function startStream(id: number, url: string): void {
+  let port: chrome.runtime.Port
   try {
-    chrome.runtime.sendMessage(message, (resp: DiffResponse | undefined) => {
-      const response: BridgeResponse = {
-        __tag: BRIDGE_TAG,
-        dir: 'response',
-        id,
-        ...(resp ?? { ok: false }),
-      }
-      window.postMessage(response, '*')
-    })
+    port = chrome.runtime.connect({ name: DIFF_STREAM_PORT })
   } catch {
-    /* context invalidated between the check and the call */
+    toMain({ __tag: BRIDGE_TAG, dir: 'head', id, ok: false }) // context invalidated
+    return
+  }
+  ports.set(id, port)
+  let done = false
+
+  port.onMessage.addListener((msg: DiffPortOutbound) => {
+    if (msg.type === 'head') {
+      toMain({ __tag: BRIDGE_TAG, dir: 'head', id, ok: msg.ok, status: msg.status })
+      if (!msg.ok) ports.delete(id) // declined: background closes; nothing follows
+    } else if (msg.type === 'chunk') {
+      // Hand MAIN a transferable ArrayBuffer instead of cloning the bytes again.
+      const u8 = msg.bytes
+      const buf = (
+        u8.byteOffset === 0 && u8.byteLength === u8.buffer.byteLength
+          ? u8.buffer
+          : u8.slice().buffer
+      ) as ArrayBuffer
+      toMain({ __tag: BRIDGE_TAG, dir: 'chunk', id, bytes: buf }, [buf])
+    } else if (msg.type === 'end') {
+      done = true
+      ports.delete(id)
+      toMain({ __tag: BRIDGE_TAG, dir: 'end', id })
+    } else if (msg.type === 'error') {
+      done = true
+      ports.delete(id)
+      toMain({ __tag: BRIDGE_TAG, dir: 'error', id })
+    }
+  })
+
+  port.onDisconnect.addListener(() => {
+    ports.delete(id)
+    if (!done) toMain({ __tag: BRIDGE_TAG, dir: 'error', id }) // SW died mid-stream
+  })
+
+  port.postMessage({ type: 'start', url })
+}
+
+window.addEventListener('message', (e) => {
+  if (e.source !== window || !isBridgeMessage(e.data)) return
+  const data = e.data
+  if (data.dir === 'request') {
+    // After an extension reload this stale relay's chrome handle is dead; tell
+    // MAIN to fall back to DiffsHub's own fetch instead of throwing.
+    if (!extensionAlive()) {
+      toMain({ __tag: BRIDGE_TAG, dir: 'head', id: data.id, ok: false })
+      return
+    }
+    startStream(data.id, data.url)
+  } else if (data.dir === 'cancel') {
+    const port = ports.get(data.id)
+    if (port) {
+      ports.delete(data.id)
+      try {
+        port.postMessage({ type: 'cancel' })
+        port.disconnect()
+      } catch {
+        /* already gone */
+      }
+    }
   }
 })
 
