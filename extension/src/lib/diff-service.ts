@@ -75,10 +75,16 @@ export async function streamDiff(
     sink.head(true, res.status)
     if (res.body) {
       const reader = res.body.getReader()
-      for (;;) {
-        const { done, value } = await reader.read()
-        if (done) break
-        if (value) sink.chunk(value)
+      try {
+        let read = await reader.read()
+        while (!read.done) {
+          if (read.value) sink.chunk(read.value)
+          read = await reader.read()
+        }
+      } finally {
+        // Release the lock so the body can be GC'd / the socket freed, even if
+        // a read rejected (abort) and we're unwinding to the catch below.
+        reader.releaseLock()
       }
     } else {
       // No readable stream (shouldn't happen for fetch, but stay correct).

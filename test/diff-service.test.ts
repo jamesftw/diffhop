@@ -150,6 +150,25 @@ describe('streamDiff', () => {
     expect(events).toEqual([['head', true, 406], ['chunk', 'too_large'], ['end']])
   })
 
+  it('streams the original 406 body when a PR files-listing page fails', async () => {
+    // PR path: 406 → fetchLargeDiff pages the files endpoint, which fails →
+    // fetchLargeDiff returns null → fall through and stream the 406 body.
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(streamRes(406, ['too_large']))
+      .mockResolvedValueOnce({ ok: false, status: 403 } as Response)
+    const { events, sink } = makeSink()
+    await streamDiff(
+      API_DIFF,
+      makeDeps({ fetch: fetch as unknown as typeof fetch }),
+      sink,
+    )
+    expect(events).toEqual([['head', true, 406], ['chunk', 'too_large'], ['end']])
+    expect(fetch.mock.calls[1][0]).toBe(
+      'https://api.github.com/repos/o/r/pulls/5/files?per_page=100',
+    )
+  })
+
   it('emits error when the fetch rejects before head (e.g. aborted)', async () => {
     const fetch = vi.fn(async () => {
       throw new DOMException('aborted', 'AbortError')

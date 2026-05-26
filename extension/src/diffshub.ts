@@ -34,38 +34,55 @@ function startStream(id: number, url: string): void {
     return
   }
   ports.set(id, port)
-  let done = false
+  let terminated = false
 
-  port.onMessage.addListener((msg: DiffPortOutbound) => {
-    if (msg.type === 'head') {
-      toMain({ __tag: BRIDGE_TAG, dir: 'head', id, ok: msg.ok, status: msg.status })
-      if (!msg.ok) ports.delete(id) // declined: background closes; nothing follows
-    } else if (msg.type === 'chunk') {
+  // Drop the stream and close the port. Disconnecting lets the background's
+  // AbortController fire and the service worker suspend; leaving ports open
+  // would pin the worker awake and accumulate one dead port per diff.
+  function finish(): void {
+    terminated = true
+    ports.delete(id)
+    try {
+      port.disconnect()
+    } catch {
+      /* already gone */
+    }
+  }
+
+  port.onMessage.addListener((reply: DiffPortOutbound) => {
+    if (reply.type === 'head') {
+      toMain({ __tag: BRIDGE_TAG, dir: 'head', id, ok: reply.ok, status: reply.status })
+      if (!reply.ok) finish() // declined: nothing follows
+    } else if (reply.type === 'chunk') {
       // Hand MAIN a transferable ArrayBuffer instead of cloning the bytes again.
-      const u8 = msg.bytes
-      const buf = (
-        u8.byteOffset === 0 && u8.byteLength === u8.buffer.byteLength
-          ? u8.buffer
-          : u8.slice().buffer
+      const chunk = reply.bytes
+      const buffer = (
+        chunk.byteOffset === 0 && chunk.byteLength === chunk.buffer.byteLength
+          ? chunk.buffer
+          : chunk.slice().buffer
       ) as ArrayBuffer
-      toMain({ __tag: BRIDGE_TAG, dir: 'chunk', id, bytes: buf }, [buf])
-    } else if (msg.type === 'end') {
-      done = true
-      ports.delete(id)
+      toMain({ __tag: BRIDGE_TAG, dir: 'chunk', id, bytes: buffer }, [buffer])
+    } else if (reply.type === 'end') {
       toMain({ __tag: BRIDGE_TAG, dir: 'end', id })
-    } else if (msg.type === 'error') {
-      done = true
-      ports.delete(id)
+      finish()
+    } else if (reply.type === 'error') {
       toMain({ __tag: BRIDGE_TAG, dir: 'error', id })
+      finish()
     }
   })
 
   port.onDisconnect.addListener(() => {
     ports.delete(id)
-    if (!done) toMain({ __tag: BRIDGE_TAG, dir: 'error', id }) // SW died mid-stream
+    if (!terminated) toMain({ __tag: BRIDGE_TAG, dir: 'error', id }) // SW died mid-stream
   })
 
-  port.postMessage({ type: 'start', url })
+  try {
+    port.postMessage({ type: 'start', url })
+  } catch {
+    // Context invalidated between connect() and start: fall back, don't hang.
+    finish()
+    toMain({ __tag: BRIDGE_TAG, dir: 'head', id, ok: false })
+  }
 }
 
 window.addEventListener('message', (e) => {

@@ -21,15 +21,15 @@ interface StreamHandler {
 const handlers = new Map<number, StreamHandler>()
 let nextId = 1
 
-window.addEventListener('message', (e) => {
-  if (e.source !== window || !isBridgeMessage(e.data)) return
-  const m = e.data
-  const h = handlers.get(m.id)
-  if (!h) return
-  if (m.dir === 'head') h.onHead(m.ok, m.status)
-  else if (m.dir === 'chunk') h.onChunk(m.bytes)
-  else if (m.dir === 'end') h.onEnd()
-  else if (m.dir === 'error') h.onError()
+window.addEventListener('message', (event) => {
+  if (event.source !== window || !isBridgeMessage(event.data)) return
+  const message = event.data
+  const handler = handlers.get(message.id)
+  if (!handler) return
+  if (message.dir === 'head') handler.onHead(message.ok, message.status)
+  else if (message.dir === 'chunk') handler.onChunk(message.bytes)
+  else if (message.dir === 'end') handler.onEnd()
+  else if (message.dir === 'error') handler.onError()
 })
 
 window.fetch = function (
@@ -61,8 +61,8 @@ window.fetch = function (
         if (!ok) return fallback() // extension declined → DiffsHub's own backend
         settled = true
         const stream = new ReadableStream<Uint8Array>({
-          start(c) {
-            controller = c
+          start(streamController) {
+            controller = streamController
           },
           cancel() {
             // Page aborted the body (e.g. navigated to another diff): close the
