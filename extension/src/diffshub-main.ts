@@ -13,12 +13,13 @@
  */
 import { BRIDGE_TAG } from './lib/config'
 import { isBridgeMessage } from './lib/messages'
+import { base64ToBytes } from './lib/bytes'
 
 const origFetch = window.fetch
 
 interface StreamHandler {
   onHead(ok: boolean, status?: number): void
-  onChunk(bytes: ArrayBuffer): void
+  onChunk(bytes: string): void
   onEnd(): void
   onError(): void
 }
@@ -79,7 +80,7 @@ function streamViaExtension(url: string): Promise<Response | null> {
       onChunk(bytes) {
         if (closed) return
         try {
-          controller?.enqueue(new Uint8Array(bytes))
+          controller?.enqueue(base64ToBytes(bytes))
         } catch {
           /* stream already closed/cancelled */
         }

@@ -62,12 +62,13 @@ export interface BridgeHead {
   ok: boolean
   status?: number
 }
-/** One slice of the diff body (transferred as an ArrayBuffer to avoid a copy). */
+/** One slice of the diff body, base64-encoded (see lib/bytes.ts — the runtime
+ * port hop is JSON, so raw bytes don't survive). */
 export interface BridgeChunk {
   __tag: typeof BRIDGE_TAG
   dir: 'chunk'
   id: number
-  bytes: ArrayBuffer
+  bytes: string
 }
 /** Body finished cleanly. */
 export interface BridgeEnd {
@@ -124,10 +125,11 @@ export interface PortCancel {
 }
 export type DiffPortInbound = PortStart | PortCancel
 
-/** background → isolated: the streaming reply, mirroring the bridge head/chunk
- * /end/error (chunk bytes are a Uint8Array; ports structured-clone, no transfer). */
+/** background → isolated: the streaming reply, mirroring the bridge
+ * head/chunk/end/error. Chunk bytes are base64 (the port hop is JSON, so a
+ * Uint8Array would not survive — see lib/bytes.ts). */
 export type DiffPortOutbound =
   | { type: 'head'; ok: boolean; status?: number }
-  | { type: 'chunk'; bytes: Uint8Array }
+  | { type: 'chunk'; bytes: string }
   | { type: 'end' }
   | { type: 'error' }

@@ -20,9 +20,9 @@ import { extensionAlive } from './lib/runtime'
 // which we relay to MAIN. A MAIN "cancel" (page aborted the body) closes the port.
 const ports = new Map<number, chrome.runtime.Port>()
 
-/** Post a bridge message to the MAIN world, optionally transferring buffers. */
-function toMain(msg: BridgeMessage, transfer: Transferable[] = []): void {
-  window.postMessage(msg, '*', transfer)
+/** Post a bridge message to the MAIN world. */
+function toMain(msg: BridgeMessage): void {
+  window.postMessage(msg, '*')
 }
 
 function startStream(id: number, url: string): void {
@@ -54,14 +54,8 @@ function startStream(id: number, url: string): void {
       toMain({ __tag: BRIDGE_TAG, dir: 'head', id, ok: reply.ok, status: reply.status })
       if (!reply.ok) finish() // declined: nothing follows
     } else if (reply.type === 'chunk') {
-      // Hand MAIN a transferable ArrayBuffer instead of cloning the bytes again.
-      const chunk = reply.bytes
-      const buffer = (
-        chunk.byteOffset === 0 && chunk.byteLength === chunk.buffer.byteLength
-          ? chunk.buffer
-          : chunk.slice().buffer
-      ) as ArrayBuffer
-      toMain({ __tag: BRIDGE_TAG, dir: 'chunk', id, bytes: buffer }, [buffer])
+      // Forward the base64 chunk verbatim; the page decodes it back to bytes.
+      toMain({ __tag: BRIDGE_TAG, dir: 'chunk', id, bytes: reply.bytes })
     } else if (reply.type === 'end') {
       toMain({ __tag: BRIDGE_TAG, dir: 'end', id })
       finish()
