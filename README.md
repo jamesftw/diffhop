@@ -5,31 +5,6 @@ A Chrome extension (MV3) that redirects GitHub diff URLs to [DiffsHub](https://d
 - **Public repos:** install and go. Every GitHub diff page redirects to DiffsHub.
 - **Private repos:** click **Sign in with GitHub** in the popup once. You authorize the diffhop GitHub App (read-only) on the repos you choose, and the extension fetches private diffs from the GitHub API on your behalf.
 
-## How it works
-
-1. You navigate to a GitHub diff URL (pull request, commit, or compare). A `declarativeNetRequest` main-frame rule rewrites it to the same path on `diffshub.com` at the network layer, before GitHub is fetched. No GitHub paint, no flash. dNR redirects are transparent (no GitHub history entry), so pressing Back returns to your previous page.
-2. GitHub's in-page (SPA / Turbo) navigations make no main-frame request, so a content script catches those as a fallback and redirects them.
-3. DiffsHub's frontend fetches the raw diff via `GET /api/diff?path=…`. When you're signed in, a content script on diffshub.com intercepts that fetch (it patches `window.fetch`) and asks the extension's background to serve it. The background calls the GitHub REST API (`api.github.com/repos/.../pulls/N` with `Accept: application/vnd.github.diff`) using your token, and returns the diff. The token lives in the extension and never reaches DiffsHub's page. When you're signed out, the fetch is left alone and public diffs resolve natively through DiffsHub.
-
-## Private repos: sign in (read-only)
-
-1. Open the **diffhop** popup, then click **Sign in with GitHub**. A github.com tab opens with the device code already filled in (the extension fills it for you).
-2. Click **Continue**, then **Authorize**, and pick the repositories to grant diffhop read access to.
-3. The popup flips to **Signed in**. Private PRs, commits, and compares now render.
-
-diffhop only ever reads diffs, so it authenticates as a GitHub App whose permissions are **Contents: Read-only** and **Pull requests: Read-only**. Because the permissions live on the App, the grant is read-only by construction. You can't accidentally give it write access, and you choose exactly which repos it sees. (GitHub has no read-only OAuth scope. The `repo` scope grants write too, which is why an App is used.) The user token is stored in the extension's `chrome.storage`, nowhere else, and never reaches DiffsHub's page.
-
-> The sign-in uses GitHub's Device Flow, so there's no client secret and no localhost callback. To read more repos later, grant them to the diffhop App from your GitHub settings. Sign out anytime from the popup.
-
-## Getting back to GitHub
-
-Every GitHub diff page redirects to DiffsHub, so a few escape hatches keep you unstuck:
-
-- Click DiffsHub's **"View on GitHub"** link. A content script on diffshub.com tags that link with a `?dh-skip` query. The network-layer rule has a higher-priority `allow` exception for it, and the GitHub content script strips the marker and sets a sticky per-tab flag so you can keep browsing GitHub without bouncing back. (A query, not a hash, because hashes aren't visible to declarativeNetRequest.)
-- Press the browser's **Back** button. Reaching a GitHub diff page via Back/Forward is honored, not bounced. A fresh visit to a new diff still redirects, so nothing silently goes dead.
-- DiffsHub can leave duplicate same-URL history entries. A guard in the DiffsHub content script fast-forwards Back past them to your real previous page.
-- The popup's **Enabled** toggle is the global off-switch.
-
 ## Build and install
 
 ```bash
