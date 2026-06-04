@@ -13,6 +13,7 @@ import {
   type DiffPortOutbound,
 } from './lib/messages'
 import { extensionAlive } from './lib/runtime'
+import { base64ToBytes } from './lib/bytes'
 
 // Bridge: MAIN world ↔ background, streamed over a per-request port. One MAIN
 // "request" opens a port; the background streams head → chunk* → end|error back,
@@ -53,13 +54,10 @@ function startStream(id: number, url: string): void {
       toMain({ __tag: BRIDGE_TAG, dir: 'head', id, ok: reply.ok, status: reply.status })
       if (!reply.ok) finish() // declined: nothing follows
     } else if (reply.type === 'chunk') {
-      // Hand MAIN a transferable ArrayBuffer instead of cloning the bytes again.
-      const chunk = reply.bytes
-      const buffer = (
-        chunk.byteOffset === 0 && chunk.byteLength === chunk.buffer.byteLength
-          ? chunk.buffer
-          : chunk.slice().buffer
-      ) as ArrayBuffer
+      // The port hop JSON-serializes, so chunks arrive base64-encoded (see
+      // lib/bytes.ts). Decode to a fresh Uint8Array and hand MAIN its backing
+      // ArrayBuffer as a transfer (offset 0, exact length — no copy needed).
+      const buffer = base64ToBytes(reply.bytes).buffer as ArrayBuffer
       toMain({ __tag: BRIDGE_TAG, dir: 'chunk', id, bytes: buffer }, [buffer])
     } else if (reply.type === 'end') {
       toMain({ __tag: BRIDGE_TAG, dir: 'end', id })

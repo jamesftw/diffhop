@@ -45,6 +45,18 @@ export const POLL_DELAY_MINUTES = 0.1
 /** Default extension config, applied when nothing is stored yet. */
 export const DEFAULT_CONFIG = { enabled: true } as const
 
+/**
+ * Large-diff (Tier 2) blob-diff tuning. When GitHub refuses to compute a diff
+ * (the 20k-line cap 406s both `.diff` and `pulls/N/files`), we enumerate via the
+ * Git Trees API and diff each file from its raw blobs. `RAW` is the media type
+ * that streams a blob's bytes with no 1MB inline cap; oversize/binary files
+ * degrade to a marker rather than being downloaded or diffed.
+ */
+export const BLOB_RAW_ACCEPT = 'application/vnd.github.raw'
+export const BLOB_MAX_BYTES = 2 * 1024 * 1024
+export const LARGE_DIFF_BUDGET_BYTES = 25 * 1024 * 1024
+export const BLOB_CONCURRENCY = 6
+
 /** Tag on page-bridge postMessages so we ignore unrelated ones. */
 export const BRIDGE_TAG = 'diffhop'
 

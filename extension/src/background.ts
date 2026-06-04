@@ -24,6 +24,7 @@ import {
   onConfigChanged,
 } from './lib/storage'
 import { streamDiff, type DiffSink } from './lib/diff-service'
+import { bytesToBase64 } from './lib/bytes'
 import { buildDeviceState, decidePollOutcome } from './lib/login-service'
 import {
   isRuntimeMessage,
@@ -67,7 +68,7 @@ chrome.runtime.onConnect.addListener((port) => {
       signalAccess(status)
       post({ type: 'head', ok, status })
     },
-    chunk: (bytes) => post({ type: 'chunk', bytes }),
+    chunk: (bytes) => post({ type: 'chunk', bytes: bytesToBase64(bytes) }),
     end: () => post({ type: 'end' }),
     error: () => post({ type: 'error' }),
   }

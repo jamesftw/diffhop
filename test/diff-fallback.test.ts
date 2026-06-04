@@ -3,6 +3,7 @@ import {
   fileToDiff,
   reconstructDiff,
   fetchLargeDiff,
+  ESCALATE,
 } from '../extension/src/lib/diff-fallback'
 
 describe('fileToDiff', () => {
@@ -164,7 +165,7 @@ describe('fetchLargeDiff', () => {
       ) as unknown as typeof fetch
     const diff = await fetchLargeDiff(pull, 'tok', doFetch)
     expect((doFetch as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(2)
-    expect(diff!.match(/diff --git/g)).toHaveLength(2)
+    expect((diff as string).match(/diff --git/g)).toHaveLength(2)
   })
 
   it('reads files[] from the commit endpoint shape', async () => {
@@ -184,25 +185,22 @@ describe('fetchLargeDiff', () => {
     )
   })
 
-  it('fails closed (null) for compare, which caps its file list at 300', async () => {
-    const doFetch = vi.fn() as unknown as typeof fetch
-    const res = await fetchLargeDiff(
-      { owner: 'o', repo: 'r', type: 'compare', ref: 'main...x' },
-      'tok',
-      doFetch,
-    )
-    expect(res).toBeNull()
-    expect(doFetch).not.toHaveBeenCalled() // no point fetching an unfixable case
+  // Any files-endpoint failure hands off to the trees path (which self-guards),
+  // rather than failing closed — the size cap, an App-permission rejection, a
+  // rate limit, an incomplete later page, or an empty listing all ESCALATE.
+  const errorPage = (status: number) => ({ ok: false, status }) as unknown as Response
+
+  it('escalates when the files endpoint is blocked (403/permission or size cap)', async () => {
+    const doFetch = vi.fn(async () => errorPage(403)) as unknown as typeof fetch
+    expect(await fetchLargeDiff(pull, 'tok', doFetch)).toBe(ESCALATE)
   })
 
-  it('returns null when the first page fails', async () => {
-    const doFetch = vi.fn(
-      async () => ({ ok: false, status: 404 }) as Response,
-    ) as unknown as typeof fetch
-    expect(await fetchLargeDiff(pull, 'tok', doFetch)).toBeNull()
+  it('escalates when the first page fails (e.g. 404)', async () => {
+    const doFetch = vi.fn(async () => errorPage(404)) as unknown as typeof fetch
+    expect(await fetchLargeDiff(pull, 'tok', doFetch)).toBe(ESCALATE)
   })
 
-  it('fails closed (null) when a later page fails, rather than truncating', async () => {
+  it('escalates when a later page fails, rather than serving a truncated diff', async () => {
     const doFetch = vi
       .fn()
       .mockResolvedValueOnce(
@@ -211,15 +209,23 @@ describe('fetchLargeDiff', () => {
           '<https://api.github.com/next>; rel="next"',
         ),
       )
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 502,
-      } as Response) as unknown as typeof fetch
-    expect(await fetchLargeDiff(pull, 'tok', doFetch)).toBeNull()
+      .mockResolvedValueOnce(errorPage(502)) as unknown as typeof fetch
+    expect(await fetchLargeDiff(pull, 'tok', doFetch)).toBe(ESCALATE)
   })
 
-  it('returns null when no files come back', async () => {
+  it('escalates when no files come back', async () => {
     const doFetch = vi.fn(async () => jsonPage([])) as unknown as typeof fetch
-    expect(await fetchLargeDiff(pull, 'tok', doFetch)).toBeNull()
+    expect(await fetchLargeDiff(pull, 'tok', doFetch)).toBe(ESCALATE)
+  })
+
+  it('returns null for compare (Tier 2 cannot help it either)', async () => {
+    const doFetch = vi.fn() as unknown as typeof fetch
+    const res = await fetchLargeDiff(
+      { owner: 'o', repo: 'r', type: 'compare', ref: 'main...x' },
+      'tok',
+      doFetch,
+    )
+    expect(res).toBeNull()
+    expect(doFetch).not.toHaveBeenCalled()
   })
 })
