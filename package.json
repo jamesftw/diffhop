@@ -22,6 +22,9 @@
     "code-review"
   ],
   "type": "module",
+  "dependencies": {
+    "diff": "^9.0.0"
+  },
   "scripts": {
     "build": "node build.mjs",
     "build:watch": "node build.mjs --watch",
@@ -34,6 +37,7 @@
   },
   "devDependencies": {
     "@types/chrome": "^0.1.42",
+    "@types/diff": "^7.0.2",
     "@types/node": "^25.9.1",
     "esbuild": "^0.28.0",
     "jsdom": "^25.0.1",

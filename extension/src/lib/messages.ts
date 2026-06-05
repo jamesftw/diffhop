@@ -125,9 +125,11 @@ export interface PortCancel {
 export type DiffPortInbound = PortStart | PortCancel
 
 /** background → isolated: the streaming reply, mirroring the bridge head/chunk
- * /end/error (chunk bytes are a Uint8Array; ports structured-clone, no transfer). */
+ * /end/error. Chunk bytes are base64: the runtime port JSON-serializes (it does
+ * not structured-clone), so a Uint8Array would arrive as a plain object. See
+ * lib/bytes.ts. */
 export type DiffPortOutbound =
   | { type: 'head'; ok: boolean; status?: number }
-  | { type: 'chunk'; bytes: Uint8Array }
+  | { type: 'chunk'; bytes: string }
   | { type: 'end' }
   | { type: 'error' }

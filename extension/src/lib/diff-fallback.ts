@@ -24,6 +24,19 @@ interface GitHubFile {
 const PER_PAGE = 100
 const MAX_PAGES = 30
 
+/**
+ * Signal that the files endpoint couldn't serve a complete diff, so the caller
+ * should try the Git Trees + blob-diff path (Tier 2) instead of failing closed.
+ * This covers every non-success the files listing can hit: the 20k-line cap
+ * (which 406/403s the files endpoint), a GitHub-App permission rejection
+ * ("Resource not accessible by integration"), a rate limit, an incomplete
+ * pagination, or an empty listing. Tier 2 uses `contents:read` (not the files
+ * endpoint's permission) and self-guards — it falls to the Tier 3 message if it
+ * can't enumerate — so escalating is always safe and recovers more cases.
+ * Distinct from null, which means "Tier 2 can't help either" (only `compare`).
+ */
+export const ESCALATE = Symbol('diffhop.escalate')
+
 /** The REST endpoint whose JSON carries the per-file patches, for each surface. */
 function filesApiUrl({ owner, repo, type, ref }: ParsedDiffPath): string {
   const base = `${ENDPOINTS.githubApi}/repos/${owner}/${repo}`
@@ -101,21 +114,22 @@ function nextLink(header: string | null): string | null {
 
 /**
  * Page through the files listing for a diff and rebuild it as a unified diff.
- * Returns null whenever the result would be incomplete, so the caller can
- * surface the original 406 (an honest "too large" error) rather than serve a
- * silently truncated diff that looks complete. null is returned when:
- *   - the diff is a `compare` (its file list caps at 300 with no pagination, so
- *     a 406 — which means >300 files — can never be fully retrieved);
- *   - any page fails to fetch;
- *   - there are more pages than MAX_PAGES (>3000 files, GitHub's own ceiling);
- *   - no files come back at all.
+ * Three outcomes:
+ *   - a string: a complete rebuilt diff (the 300-file cap case the files
+ *     endpoint still serves);
+ *   - ESCALATE: the files endpoint couldn't serve it (size cap, App-permission
+ *     rejection, rate limit, incomplete page, or empty) → the caller tries the
+ *     Git Trees path, which can recover it and self-guards;
+ *   - null: not worth trying Tier 2 either — only `compare`, or >MAX_PAGES
+ *     (>3000 files, too many to blob-diff) → the caller shows the Tier 3 message.
  */
 export async function fetchLargeDiff(
   parsed: ParsedDiffPath,
   token: string,
   doFetch: typeof fetch,
-): Promise<string | null> {
-  // compare/{basehead} only ever returns the first 300 files; we'd truncate.
+): Promise<string | typeof ESCALATE | null> {
+  // compare/{basehead} only ever returns the first 300 files; Tier 2 can't help
+  // it either (no base/head pair to tree-diff), so fail straight to Tier 3.
   if (parsed.type === 'compare') return null
 
   const headers = {
@@ -130,11 +144,15 @@ export async function fetchLargeDiff(
   const files: GitHubFile[] = []
   let url: string | null = first.toString()
   for (let page = 0; url; page++) {
-    if (page >= MAX_PAGES) return null // more files than we'll page through
+    if (page >= MAX_PAGES) return null // >3000 files: too many to blob-diff in Tier 2
     const res: Response = await doFetch(url, { headers })
-    if (!res.ok) return null // a missing page means an incomplete diff
+    // Any files-endpoint failure (line cap, App-permission rejection, rate limit,
+    // an incomplete later page) → hand off to the trees path, which can recover it.
+    if (!res.ok) return ESCALATE
     files.push(...extractFiles(parsed.type, await res.json()))
     url = nextLink(res.headers.get('Link'))
   }
-  return files.length > 0 ? reconstructDiff(files) : null
+  // A complete listing rebuilds the diff; an empty one escalates (trees may find
+  // the changes the files endpoint wouldn't list).
+  return files.length > 0 ? reconstructDiff(files) : ESCALATE
 }
